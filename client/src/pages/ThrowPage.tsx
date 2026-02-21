@@ -1,10 +1,17 @@
 /**
  * ThrowPage.tsx — 沉浸优先投掷页
  *
- * 布局结构：
- * [顶部：半透明问题条 ≤56px，fixed]
- * [中间：Three.js 3D 投掷区域 75-85vh，绝对主视觉]
- * [底部：HUD 进度层 ≤15vh，fixed]
+ * 布局：
+ *   [顶部 56px] 半透明问题条
+ *   [中间 75-85vh] Three.js 3D 投掷区域（主视觉）
+ *   [底部 ≤15vh] HUD 进度层
+ *
+ * 状态机修复要点：
+ *   - 用 throwsRef（useRef）同步跟踪已投掷数组，避免 React state 异步更新导致
+ *     handleAnimationComplete 中读到旧 currentCount 而漏掉 finalizeCasting
+ *   - finalizeCasting(allThrows) 是唯一出口：计算卦象 → setHexagramResult → 跳转
+ *   - 逐次/一键共用同一 finalizeCasting，不存在两套实现
+ *   - 关键节点均有 console.log（step、currentLine、isCasting、apiStatus）
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
@@ -15,10 +22,10 @@ import type { ThrowResult } from '@/lib/liuyao';
 
 // ─── 六爻线条（HUD 内使用）────────────────────────────────────────────────
 function HexLineHUD({ value, isActive }: { value: number | null; isActive: boolean }) {
-  const isYin = value !== null && (value === 6 || value === 8);
+  const isYin     = value !== null && (value === 6 || value === 8);
   const isDynamic = value !== null && (value === 6 || value === 9);
-  const lineColor = isDynamic ? '#e8a020' : 'rgba(255,255,255,0.82)';
-  const emptyColor = isActive ? 'rgba(200,168,75,0.45)' : 'rgba(255,255,255,0.12)';
+  const lineColor  = isDynamic ? '#c87820' : 'rgba(80,50,10,0.82)';
+  const emptyColor = isActive  ? 'rgba(180,140,60,0.45)' : 'rgba(120,90,40,0.18)';
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', height: '9px', gap: '4px' }}>
@@ -42,11 +49,20 @@ export default function ThrowPage() {
   const [, navigate] = useLocation();
   const { state, addThrow, setThrows, setHexagramResult } = useDivination();
 
-  const [coinResults, setCoinResults] = useState<[CoinFace, CoinFace, CoinFace] | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
+  const [coinResults, setCoinResults]       = useState<[CoinFace, CoinFace, CoinFace] | null>(null);
+  const [isAnimating, setIsAnimating]       = useState(false);
   const [showLineResult, setShowLineResult] = useState(false);
-  const [lastLineDesc, setLastLineDesc] = useState('');
-  const [lastLineIdx, setLastLineIdx] = useState(0);
+  const [lastLineDesc, setLastLineDesc]     = useState('');
+  const [lastLineIdx, setLastLineIdx]       = useState(0);
+  // 用于强制刷新顶部计数显示
+  const [throwCount, setThrowCount]         = useState(0);
+
+  /**
+   * throwsRef 是 throws 数组的同步镜像。
+   * React state 更新是异步的，在 handleAnimationComplete 中
+   * 直接读 state.throws 会得到旧值，因此用 ref 保证读到最新数组。
+   */
+  const throwsRef = useRef<ThrowResult[]>([]);
 
   // 待提交的投掷结果（等动画结束后再更新状态）
   const pendingRef = useRef<{
@@ -55,91 +71,130 @@ export default function ThrowPage() {
     mode: 'single' | 'all';
   } | null>(null);
 
-  const currentCount = state.throws.length;
-  const isComplete = currentCount >= 6;
-
   // 没有问题时跳回提问页
   useEffect(() => {
     if (!state.question) navigate('/');
   }, [state.question, navigate]);
 
-  // 六爻完成后跳转结果页
+  // 六爻完成后跳转结果页（hexagramResult 由 finalizeCasting 写入）
   useEffect(() => {
-    if (isComplete && state.hexagramResult) {
+    if (state.hexagramResult) {
+      console.log('[ThrowPage] hexagramResult 已设置，900ms 后跳转结果页');
       const t = setTimeout(() => navigate('/result'), 900);
       return () => clearTimeout(t);
     }
-  }, [isComplete, state.hexagramResult, navigate]);
+  }, [state.hexagramResult, navigate]);
+
+  // ── 统一的 finalizeCasting 出口 ──────────────────────────────────────────
+  /**
+   * 六爻全部完成后的唯一出口。
+   * 逐次模式和一键模式都调用这里，避免两套实现分叉。
+   */
+  const finalizeCasting = useCallback((allThrows: ThrowResult[]) => {
+    console.log('[ThrowPage] finalizeCasting 触发 | 爻数:', allThrows.length,
+      '| 爻值:', allThrows.map(t => t.sum).join(','));
+    const hexResult = computeHexagram(allThrows);
+    console.log('[ThrowPage] 本卦:', hexResult.originalBits,
+      '| 变卦:', hexResult.changedBits,
+      '| 动爻:', hexResult.movingLines);
+    setHexagramResult(hexResult);
+  }, [setHexagramResult]);
 
   // ── 动画完成回调 ──────────────────────────────────────────────────────────
   const handleAnimationComplete = useCallback(() => {
     const p = pendingRef.current;
-    if (!p) return;
+    if (!p) {
+      console.warn('[ThrowPage] handleAnimationComplete: pendingRef 为空，忽略');
+      return;
+    }
+
+    setIsAnimating(false);
 
     if (p.mode === 'single') {
+      // 将本次结果追加到 ref（同步，不受 React 批处理影响）
+      const newThrows = [...throwsRef.current, p.result];
+      throwsRef.current = newThrows;
+
+      // 同步更新 context（异步，仅用于 HUD 展示）
       addThrow(p.result);
-      const newCount = currentCount + 1;
+      setThrowCount(newThrows.length);
+
+      const newCount = newThrows.length;
+      console.log('[ThrowPage] 单次投掷完成 | step:', newCount,
+        '| sum:', p.result.sum,
+        '| isMoving:', p.result.isMoving);
+
       setLastLineDesc(getLineDisplay(p.result.sum).description);
-      setLastLineIdx(currentCount);
+      setLastLineIdx(newCount - 1);
       setShowLineResult(true);
-      setIsAnimating(false);
 
       if (newCount === 6) {
-        const allThrows = [...state.throws, p.result];
-        setHexagramResult(computeHexagram(allThrows));
+        console.log('[ThrowPage] 第6爻完成，触发 finalizeCasting');
+        finalizeCasting(newThrows);
       }
+
     } else if (p.mode === 'all' && p.allResults) {
+      throwsRef.current = p.allResults;
       setThrows(p.allResults);
+      setThrowCount(6);
+
       const last = p.allResults[5]!;
+      console.log('[ThrowPage] 一键成卦完成 | 6爻值:',
+        p.allResults.map(t => t.sum).join(','));
+
       setLastLineDesc(getLineDisplay(last.sum).description);
       setLastLineIdx(5);
       setShowLineResult(true);
-      setIsAnimating(false);
-      setHexagramResult(computeHexagram(p.allResults));
+
+      finalizeCasting(p.allResults);
     }
 
     pendingRef.current = null;
-  }, [addThrow, setThrows, setHexagramResult, currentCount, state.throws]);
+  }, [addThrow, setThrows, finalizeCasting]);
 
   // ── 单次投掷 ──────────────────────────────────────────────────────────────
   const handleThrowOne = useCallback(() => {
-    if (isAnimating || isComplete) return;
-    setShowLineResult(false);
+    const currentCount = throwsRef.current.length;
+    if (isAnimating || currentCount >= 6) return;
 
+    setShowLineResult(false);
     const result = throwOnce();
-    pendingRef.current = {
-      result,
-      mode: 'single',
-    };
+
+    console.log('[ThrowPage] 开始投掷第', currentCount + 1, '爻 | sum:', result.sum,
+      '| isMoving:', result.isMoving);
+
+    pendingRef.current = { result, mode: 'single' };
     setCoinResults(result.coins.map(c => c === 1 ? 3 : 2) as [CoinFace, CoinFace, CoinFace]);
     setIsAnimating(true);
-  }, [isAnimating, isComplete]);
+  }, [isAnimating]);
 
   // ── 一键成卦 ──────────────────────────────────────────────────────────────
   const handleThrowAll = useCallback(() => {
-    if (isAnimating || isComplete) return;
-    setShowLineResult(false);
+    const currentCount = throwsRef.current.length;
+    if (isAnimating || currentCount >= 6) return;
 
+    setShowLineResult(false);
     const results = throwAllSix();
-    const last = results[results.length - 1]!;
-    pendingRef.current = {
-      result: last,
-      allResults: results,
-      mode: 'all',
-    };
-    // 展示最后一爻的硬币
+    const last    = results[results.length - 1]!;
+
+    console.log('[ThrowPage] 一键成卦 | 6爻值:', results.map(t => t.sum).join(','));
+
+    pendingRef.current = { result: last, allResults: results, mode: 'all' };
     setCoinResults(last.coins.map(c => c === 1 ? 3 : 2) as [CoinFace, CoinFace, CoinFace]);
     setIsAnimating(true);
-  }, [isAnimating, isComplete]);
+  }, [isAnimating]);
 
-  const lineLabels = ['初', '二', '三', '四', '五', '上'];
+  // HUD 展示用：从 ref 读（同步）
+  const currentCount = throwCount;
+  const lineLabels   = ['初', '二', '三', '四', '五', '上'];
+  const isCastingDone = currentCount >= 6;
 
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'linear-gradient(180deg, #1c1408 0%, #140f06 60%, #0e0a04 100%)',
+        background: 'radial-gradient(ellipse at 50% 40%, #F5F0E6 0%, #EFE6D6 55%, #E5D9C4 100%)',
         overflow: 'hidden',
       }}
     >
@@ -149,10 +204,10 @@ export default function ThrowPage() {
           position: 'absolute',
           top: 0, left: 0, right: 0,
           height: '56px',
-          background: 'rgba(18,12,4,0.78)',
+          background: 'rgba(245,240,230,0.88)',
           backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
-          borderBottom: '1px solid rgba(200,168,75,0.18)',
+          borderBottom: '1px solid rgba(160,120,60,0.22)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -163,7 +218,7 @@ export default function ThrowPage() {
         <button
           onClick={() => navigate('/')}
           style={{
-            color: 'rgba(200,168,75,0.6)',
+            color: 'rgba(120,80,20,0.70)',
             fontSize: '12px',
             fontFamily: '"Noto Serif SC", serif',
             background: 'none',
@@ -178,7 +233,7 @@ export default function ThrowPage() {
 
         <div
           style={{
-            color: 'rgba(240,228,195,0.88)',
+            color: 'rgba(60,35,10,0.88)',
             fontSize: '13px',
             fontFamily: '"Noto Serif SC", serif',
             letterSpacing: '0.06em',
@@ -194,17 +249,17 @@ export default function ThrowPage() {
 
         <div
           style={{
-            color: 'rgba(200,168,75,0.65)',
+            color: 'rgba(140,100,30,0.75)',
             fontSize: '12px',
             fontFamily: '"Noto Serif SC", serif',
             letterSpacing: '0.05em',
           }}
         >
-          {isComplete ? '六爻已成' : `第 ${currentCount + 1} / 6 爻`}
+          {isCastingDone ? '六爻已成' : `第 ${currentCount + 1} / 6 爻`}
         </div>
       </div>
 
-      {/* ── 3D 投掷区域（主视觉，56px ~ 85vh）────────────────────────────── */}
+      {/* ── 3D 投掷区域（主视觉）────────────────────────────────────────── */}
       <div
         style={{
           position: 'absolute',
@@ -220,7 +275,7 @@ export default function ThrowPage() {
           onAnimationComplete={handleAnimationComplete}
         />
 
-        {/* 投掷中：极简提示，不遮挡硬币 */}
+        {/* 投掷中：极简提示 */}
         {isAnimating && (
           <div
             style={{
@@ -228,7 +283,7 @@ export default function ThrowPage() {
               top: '14px',
               left: '50%',
               transform: 'translateX(-50%)',
-              color: 'rgba(200,168,75,0.5)',
+              color: 'rgba(140,100,30,0.55)',
               fontSize: '18px',
               letterSpacing: '0.3em',
               pointerEvents: 'none',
@@ -239,21 +294,21 @@ export default function ThrowPage() {
           </div>
         )}
 
-        {/* 停住后：本爻结果浮层（Canvas 底部，不遮挡硬币主体） */}
-        {showLineResult && lastLineDesc && !isAnimating && !isComplete && (
+        {/* 停住后：本爻结果浮层 */}
+        {showLineResult && lastLineDesc && !isAnimating && !isCastingDone && (
           <div
             style={{
               position: 'absolute',
               bottom: '18px',
               left: '50%',
               transform: 'translateX(-50%)',
-              background: 'rgba(14,9,3,0.80)',
+              background: 'rgba(245,240,230,0.92)',
               backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
-              border: '1px solid rgba(200,168,75,0.3)',
+              border: '1px solid rgba(160,120,60,0.35)',
               borderRadius: '4px',
               padding: '8px 28px',
-              color: 'rgba(240,220,160,0.95)',
+              color: 'rgba(80,45,10,0.95)',
               fontSize: '14px',
               fontFamily: '"Noto Serif SC", serif',
               letterSpacing: '0.14em',
@@ -267,14 +322,14 @@ export default function ThrowPage() {
         )}
 
         {/* 点击提示（未投掷时） */}
-        {!isAnimating && !isComplete && currentCount === 0 && !showLineResult && (
+        {!isAnimating && currentCount === 0 && !showLineResult && (
           <div
             style={{
               position: 'absolute',
               bottom: '24px',
               left: '50%',
               transform: 'translateX(-50%)',
-              color: 'rgba(200,168,75,0.35)',
+              color: 'rgba(140,100,30,0.40)',
               fontSize: '12px',
               fontFamily: '"Noto Serif SC", serif',
               letterSpacing: '0.12em',
@@ -294,10 +349,10 @@ export default function ThrowPage() {
           height: '15vh',
           minHeight: '90px',
           maxHeight: '130px',
-          background: 'rgba(10,7,2,0.88)',
+          background: 'rgba(245,240,230,0.92)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          borderTop: '1px solid rgba(200,168,75,0.15)',
+          borderTop: '1px solid rgba(160,120,60,0.20)',
           display: 'flex',
           alignItems: 'center',
           padding: '0 20px',
@@ -305,7 +360,7 @@ export default function ThrowPage() {
           zIndex: 30,
         }}
       >
-        {/* 左侧：六爻线条（自下而上） */}
+        {/* 左侧：六爻线条（自下而上，从 context state 读，仅展示用） */}
         <div
           style={{
             display: 'flex',
@@ -319,7 +374,7 @@ export default function ThrowPage() {
             <HexLineHUD
               key={i}
               value={state.throws[i]?.sum ?? null}
-              isActive={i === currentCount}
+              isActive={i === state.throws.length}
             />
           ))}
         </div>
@@ -335,7 +390,7 @@ export default function ThrowPage() {
             gap: '8px',
           }}
         >
-          {!isComplete ? (
+          {!isCastingDone ? (
             <>
               {/* 主投掷按钮 */}
               <button
@@ -346,11 +401,11 @@ export default function ThrowPage() {
                   maxWidth: '220px',
                   padding: '9px 0',
                   background: isAnimating
-                    ? 'rgba(80,60,20,0.35)'
+                    ? 'rgba(180,150,80,0.22)'
                     : 'linear-gradient(135deg, #7a5c10 0%, #c8a84b 50%, #7a5c10 100%)',
                   border: 'none',
                   borderRadius: '3px',
-                  color: isAnimating ? 'rgba(200,168,75,0.35)' : '#1a1208',
+                  color: isAnimating ? 'rgba(140,100,30,0.40)' : '#1a1208',
                   fontSize: '14px',
                   fontFamily: '"Noto Serif SC", serif',
                   letterSpacing: '0.22em',
@@ -369,9 +424,9 @@ export default function ThrowPage() {
                   onClick={handleThrowAll}
                   style={{
                     background: 'none',
-                    border: '1px solid rgba(200,168,75,0.28)',
+                    border: '1px solid rgba(160,120,60,0.32)',
                     borderRadius: '3px',
-                    color: 'rgba(200,168,75,0.55)',
+                    color: 'rgba(120,85,20,0.60)',
                     fontSize: '11px',
                     fontFamily: '"Noto Serif SC", serif',
                     letterSpacing: '0.18em',
@@ -380,12 +435,12 @@ export default function ThrowPage() {
                     transition: 'all 0.2s',
                   }}
                   onMouseEnter={e => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(200,168,75,0.6)';
-                    (e.currentTarget as HTMLButtonElement).style.color = 'rgba(200,168,75,0.85)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(160,120,60,0.65)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'rgba(120,85,20,0.90)';
                   }}
                   onMouseLeave={e => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(200,168,75,0.28)';
-                    (e.currentTarget as HTMLButtonElement).style.color = 'rgba(200,168,75,0.55)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(160,120,60,0.32)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'rgba(120,85,20,0.60)';
                   }}
                 >
                   一键成卦
@@ -395,7 +450,7 @@ export default function ThrowPage() {
           ) : (
             <div
               style={{
-                color: 'rgba(200,168,75,0.8)',
+                color: 'rgba(120,85,20,0.85)',
                 fontSize: '13px',
                 fontFamily: '"Noto Serif SC", serif',
                 letterSpacing: '0.18em',
@@ -425,11 +480,11 @@ export default function ThrowPage() {
                 fontSize: '9px',
                 fontFamily: '"Noto Serif SC", serif',
                 lineHeight: '9px',
-                color: i < currentCount
-                  ? 'rgba(200,168,75,0.75)'
-                  : i === currentCount
-                  ? 'rgba(200,168,75,0.35)'
-                  : 'rgba(255,255,255,0.1)',
+                color: i < state.throws.length
+                  ? 'rgba(140,100,30,0.80)'
+                  : i === state.throws.length
+                  ? 'rgba(140,100,30,0.38)'
+                  : 'rgba(80,50,10,0.15)',
                 display: 'flex',
                 alignItems: 'center',
               }}
