@@ -1,0 +1,300 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700&display=swap');
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --primary: var(--color-blue-700);
+  --primary-foreground: var(--color-blue-50);
+  --sidebar-primary: var(--color-blue-600);
+  --sidebar-primary-foreground: var(--color-blue-50);
+  --chart-1: var(--color-blue-300);
+  --chart-2: var(--color-blue-500);
+  --chart-3: var(--color-blue-600);
+  --chart-4: var(--color-blue-700);
+  --chart-5: var(--color-blue-800);
+  --radius: 0.65rem;
+  /* 古风宣纸色调 */  --background: oklch(0.985 0.012 75);
+  --bg-paper: #faf6ed;
+  --foreground: oklch(0.22 0.025 55);
+  --card: oklch(0.98 0.008 78);
+  --card-foreground: oklch(0.22 0.025 55);
+  --popover: oklch(0.98 0.008 78);
+  --popover-foreground: oklch(0.22 0.025 55);
+  --primary: oklch(0.42 0.08 55);
+  --primary-foreground: oklch(0.97 0.01 80);
+  --secondary: oklch(0.93 0.015 75);
+  --secondary-foreground: oklch(0.35 0.04 55);
+  --muted: oklch(0.96 0.018 75);
+  --muted-foreground: oklch(0.52 0.03 60);
+  --accent: oklch(0.90 0.025 70);
+  --accent-foreground: oklch(0.35 0.05 55);
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.97 0.01 80);
+  --border: oklch(0.88 0.02 75);
+  --input: oklch(0.88 0.02 75);
+  --ring: oklch(0.55 0.08 55);
+  --sidebar: oklch(0.95 0.015 75);
+  --sidebar-foreground: oklch(0.30 0.03 60);
+  --sidebar-primary: oklch(0.42 0.08 55);
+  --sidebar-primary-foreground: oklch(0.97 0.01 80);
+  --sidebar-accent: oklch(0.90 0.02 70);
+  --sidebar-accent-foreground: oklch(0.35 0.04 55);
+  --sidebar-border: oklch(0.88 0.02 75);
+  --sidebar-ring: oklch(0.55 0.08 55);
+}
+
+.dark {
+  --primary: var(--color-blue-700);
+  --primary-foreground: var(--color-blue-50);
+  --sidebar-primary: var(--color-blue-500);
+  --sidebar-primary-foreground: var(--color-blue-50);
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.85 0.005 65);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.85 0.005 65);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.85 0.005 65);
+  --secondary: oklch(0.24 0.006 286.033);
+  --secondary-foreground: oklch(0.7 0.005 65);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground:  oklch(0.92 0.005 65);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.488 0.243 264.376);
+  --chart-1: var(--color-blue-300);
+  --chart-2: var(--color-blue-500);
+  --chart-3: var(--color-blue-600);
+  --chart-4: var(--color-blue-700);
+  --chart-5: var(--color-blue-800);
+  --sidebar: oklch(0.21 0.006 285.885);
+  --sidebar-foreground: oklch(0.85 0.005 65);
+  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent-foreground:  oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.488 0.243 264.376);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  textarea {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  body {
+    @apply text-foreground;
+    background-color: #faf6ed;
+    font-family: 'Noto Serif SC', 'STSong', 'SimSun', serif;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(180, 140, 80, 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(160, 120, 60, 0.03) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 80%, rgba(140, 110, 50, 0.03) 0%, transparent 50%);
+    min-height: 100vh;
+  }
+  html {
+    background-color: #faf6ed;
+  }
+  h1, h2, h3 {
+    font-family: 'Noto Serif SC', 'STSong', 'SimSun', serif;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+/* 淡入动画 */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+/* 卦线绘制动画 */
+@keyframes line-draw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.animate-line-draw {
+  animation: line-draw 0.3s ease-out forwards;
+  transform-origin: left center;
+}
+
+/* 定制 Streamdown prose 样式 */
+.prose p {
+  margin-bottom: 0.75em;
+}
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+@layer components {
+  /**
+   * Custom container utility that centers content and adds responsive padding.
+   *
+   * This overrides Tailwind's default container behavior to:
+   * - Auto-center content (mx-auto)
+   * - Add responsive horizontal padding
+   * - Set max-width for large screens
+   *
+   * Usage: <div className="container">...</div>
+   *
+   * For custom widths, use max-w-* utilities directly:
+   * <div className="max-w-6xl mx-auto px-4">...</div>
+   */
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem; /* 16px - mobile padding */
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem; /* 24px - tablet padding */
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem; /* 32px - desktop padding */
+      padding-right: 2rem;
+      max-width: 1280px; /* Standard content width */
+    }
+  }
+}
+/* ─── 印章按下动效 ─────────────────────────────────────────── */
+@keyframes seal-splash {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  50%  { transform: scale(2.2); opacity: 0.35; }
+  100% { transform: scale(3.5); opacity: 0; }
+}
+
+/* ─── 墨迹晕开动效 ─────────────────────────────────────────── */
+@keyframes ink-spread {
+  0%   { text-shadow: 0 0 0px rgba(60,30,10,0); }
+  30%  { text-shadow: 0 0 8px rgba(60,30,10,0.45), 0 0 2px rgba(100,60,20,0.3); }
+  100% { text-shadow: 0 0 0px rgba(60,30,10,0); }
+}
+
+.ink-char {
+  display: inline-block;
+  animation: ink-spread 0.7s ease-out forwards;
+}
+
+/* ─── 示例问题墨迹点击效果 ─────────────────────────────────── */
+@keyframes ink-ripple {
+  0%   { box-shadow: 0 0 0 0 rgba(100,60,20,0.35); background: rgba(255,240,200,0.9); }
+  50%  { box-shadow: 0 0 0 8px rgba(100,60,20,0); background: rgba(255,240,200,0.9); }
+  100% { box-shadow: 0 0 0 0 rgba(100,60,20,0); background: rgba(255,248,230,0.6); }
+}
+
+.ink-ripple-active {
+  animation: ink-ripple 0.55s ease-out forwards;
+}
+
+/* ─── 八卦旋转加载 ─────────────────────────────────────────── */
+@keyframes bagua-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ─── 结果页揭示动画 ───────────────────────────────────────── */
+@keyframes scroll-unfurl {
+  0%   { transform: scaleY(0.3) translateY(-20px); opacity: 0; }
+  60%  { transform: scaleY(1.03) translateY(2px); opacity: 1; }
+  100% { transform: scaleY(1) translateY(0); opacity: 1; }
+}
+
+.scroll-unfurl {
+  animation: scroll-unfurl 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: top center;
+}
+
+/* ─── Streamdown 内容区暖色覆盖（消除灰色背景）─────────────── */
+/* 覆盖 Streamdown 中 code/pre/blockquote 的灰色背景 */
+.ancient-reading-content [data-streamdown="inline-code"],
+.ancient-reading-content code {
+  background: rgba(255, 243, 210, 0.7) !important;
+  color: #5a3a1a !important;
+  border: 1px solid rgba(175, 130, 50, 0.2) !important;
+}
+.ancient-reading-content [data-streamdown="code-block"] pre,
+.ancient-reading-content pre {
+  background: rgba(255, 248, 225, 0.85) !important;
+  border: 1px solid rgba(175, 130, 50, 0.15) !important;
+}
+.ancient-reading-content [data-streamdown="blockquote"],
+.ancient-reading-content blockquote {
+  background: rgba(255, 248, 225, 0.6) !important;
+  border-left-color: rgba(160, 100, 35, 0.4) !important;
+  color: #4a3520 !important;
+}
+/* 确保 prose 内段落颜色正确 */
+.ancient-reading-content p,
+.ancient-reading-content li {
+  color: #3d2e1a;
+  line-height: 2.2;
+}
