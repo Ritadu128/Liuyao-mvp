@@ -14,12 +14,25 @@ import {
 
 type TabType = 'integrated' | 'hexagram';
 
+// ── 调试面板（仅开发模式可见）──────────────────────────────────────────────
+const IS_DEV = import.meta.env.DEV;
+
+interface DebugInfo {
+  key: string;
+  url: string;
+  name: string;
+  guaCiPreview: string;
+  guaCiLength: number;
+  fetchedAt: string;
+}
+
 export default function ResultPage() {
   const [, navigate] = useLocation();
   const { state, setOriginalHexagram, setChangedHexagram, setOriginalText, setChangedText,
     setIntegratedReading, setHexagramReading, setIsLoadingReading, setSavedReadingId } = useDivination();
   const [activeTab, setActiveTab] = useState<TabType>('integrated');
   const [revealed, setRevealed] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
 
   useEffect(() => {
     if (!state.hexagramResult) navigate('/');
@@ -35,7 +48,16 @@ export default function ResultPage() {
 
   useEffect(() => { if (originalHexagram) setOriginalHexagram(originalHexagram); }, [originalHexagram]);
   useEffect(() => { if (changedHexagram !== undefined) setChangedHexagram(changedHexagram); }, [changedHexagram]);
-  useEffect(() => { if (originalText) setOriginalText(originalText); }, [originalText]);
+  useEffect(() => {
+    if (originalText) {
+      setOriginalText(originalText);
+      // 从 window.__hexDebug 读取调试信息
+      if (IS_DEV && originalHexagram?.key) {
+        const dbg = (window as any).__hexDebug?.[originalHexagram.key];
+        if (dbg) setDebugInfo(dbg);
+      }
+    }
+  }, [originalText, originalHexagram]);
   useEffect(() => { if (changedText !== undefined) setChangedText(changedText); }, [changedText]);
 
   useEffect(() => {
@@ -284,6 +306,27 @@ export default function ResultPage() {
             />
           )}
         </div>
+
+        {/* 调试面板（仅开发模式） */}
+        {IS_DEV && debugInfo && (
+          <div
+            className="mx-4 mb-4 p-3 rounded text-[0.72rem] font-mono"
+            style={{
+              background: 'rgba(30,20,10,0.85)',
+              color: '#b5e853',
+              border: '1px solid rgba(100,200,80,0.3)',
+              lineHeight: 1.7,
+            }}
+          >
+            <div style={{ color: '#ffcc44', marginBottom: 4 }}>🧪 DEBUG · HexagramData</div>
+            <div><span style={{ color: '#88ccff' }}>key</span>         : {debugInfo.key}</div>
+            <div><span style={{ color: '#88ccff' }}>url</span>         : {debugInfo.url}</div>
+            <div><span style={{ color: '#88ccff' }}>name</span>        : {debugInfo.name}</div>
+            <div><span style={{ color: '#88ccff' }}>guaCi[0:60]</span> : {debugInfo.guaCiPreview}</div>
+            <div><span style={{ color: '#88ccff' }}>guaCi.length</span>: {debugInfo.guaCiLength}</div>
+            <div><span style={{ color: '#88ccff' }}>fetchedAt</span>   : {debugInfo.fetchedAt}</div>
+          </div>
+        )}
 
         <div className="pb-6">
           <Disclaimer />

@@ -4,7 +4,53 @@ import { invokeLLM } from '../_core/llm';
 import { getDb } from '../db';
 import { readings } from '../../drizzle/schema';
 import { eq, desc } from 'drizzle-orm';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ── Test fixture loader ─────────────────────────────────────────────────────
+/**
+ * 当环境变量 FORCE_GUA=<key> 时（如 "01"），忽略前端传入的卦象数据，
+ * 直接从 server/test-fixtures/<key>.json 读取卦象并构造 generate 输入。
+ * 返回 null 表示未启用测试模式。
+ */
+function loadForceGuaFixture(): {
+  key: string;
+  name: string;
+  bits: string;
+  gua_ci: string;
+  xiang_yue: string;
+  yao_ci: Record<string, string>;
+} | null {
+  const forceGua = process.env.FORCE_GUA;
+  if (!forceGua) return null;
+
+  const fixturePath = path.resolve(
+    __dirname,
+    '../test-fixtures',
+    `${forceGua}.json`
+  );
+
+  if (!fs.existsSync(fixturePath)) {
+    console.warn(`[Reading] FORCE_GUA=${forceGua} 但找不到 fixture 文件: ${fixturePath}`);
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(fixturePath, 'utf-8');
+    const data = JSON.parse(raw);
+    console.log(`[Reading] 🧪 测试模式：FORCE_GUA=${forceGua}，使用 ${data.name}（第${data.key}卦）`);
+    return data;
+  } catch (e) {
+    console.error(`[Reading] FORCE_GUA fixture 解析失败:`, e);
+    return null;
+  }
+}
+
+// ── Schemas ─────────────────────────────────────────────────────────────────
 const YaoCiSchema = z.object({
   position: z.number().int().min(1).max(6),
   text: z.string(),
@@ -67,11 +113,43 @@ ${input.yaoCi.length > 0 ? '动爻爻辞：\n' + yaoCiText : ''}
 5. 严格返回合法 JSON，不要有额外文字`;
 }
 
+// ── Router ───────────────────────────────────────────────────────────────────
 export const readingRouter = router({
   generate: publicProcedure
     .input(GenerateInputSchema)
     .mutation(async ({ input, ctx }) => {
-      const prompt = buildPrompt(input);
+      // ── 测试模式：FORCE_GUA 覆盖前端传入的卦象数据 ──────────────────────
+      const fixture = loadForceGuaFixture();
+      const testMode = fixture !== null;
+
+      let effectiveInput = input;
+      if (fixture) {
+        // 用第一爻（初九）作为动爻，让解读更丰富
+        const movingLines = [1];
+        effectiveInput = {
+          ...input, // 保留 question（来自前端）
+          originalKey: fixture.key,
+          originalName: fixture.name,
+          originalBits: fixture.bits,
+          changedKey: null,
+          changedName: null,
+          changedBits: null,
+          movingLines,
+          guaCi: fixture.gua_ci,
+          xiangYue: fixture.xiang_yue,
+          yaoCi: movingLines.map(pos => ({
+            position: pos,
+            text: fixture.yao_ci[String(pos)] ?? '',
+          })),
+          linesJson: JSON.stringify(
+            fixture.bits.split('').map(b => (b === '1' ? 9 : 8))
+          ),
+        };
+        console.log('[Reading] 🧪 effectiveInput.originalName:', effectiveInput.originalName);
+      }
+
+      // ── 调用 LLM 生成解读 ─────────────────────────────────────────────────
+      const prompt = buildPrompt(effectiveInput);
 
       let integratedReading = '';
       let hexagramReading = '';
@@ -115,7 +193,7 @@ export const readingRouter = router({
         hexagramReading = '解读生成失败，请稍后重试。';
       }
 
-      // 保存到数据库
+      // ── 保存到数据库 ──────────────────────────────────────────────────────
       let readingId: number | null = null;
       try {
         const db = await getDb();
@@ -123,15 +201,15 @@ export const readingRouter = router({
           const userId = (ctx.user as any)?.id ?? null;
           const [result] = await db.insert(readings).values({
             userId,
-            question: input.question,
-            linesJson: input.linesJson,
-            originalKey: input.originalKey,
-            originalName: input.originalName,
-            originalBits: input.originalBits,
-            changedKey: input.changedKey ?? null,
-            changedName: input.changedName ?? null,
-            changedBits: input.changedBits ?? null,
-            movingLinesJson: JSON.stringify(input.movingLines),
+            question: effectiveInput.question,
+            linesJson: effectiveInput.linesJson,
+            originalKey: effectiveInput.originalKey,
+            originalName: effectiveInput.originalName,
+            originalBits: effectiveInput.originalBits,
+            changedKey: effectiveInput.changedKey ?? null,
+            changedName: effectiveInput.changedName ?? null,
+            changedBits: effectiveInput.changedBits ?? null,
+            movingLinesJson: JSON.stringify(effectiveInput.movingLines),
             integratedReading,
             hexagramReading,
           });
@@ -141,7 +219,12 @@ export const readingRouter = router({
         console.error('[Reading] DB save error:', e);
       }
 
-      return { integratedReading, hexagramReading, readingId };
+      return {
+        integratedReading,
+        hexagramReading,
+        readingId,
+        ...(testMode ? { testMode: true } : {}),
+      };
     }),
 
   // 获取历史记录列表

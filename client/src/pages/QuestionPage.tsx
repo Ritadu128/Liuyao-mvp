@@ -1,10 +1,13 @@
 import { useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useDivination } from '@/contexts/DivinationContext';
+import type { LineValue } from '@/lib/liuyao';
 import {
   FANG_SONG, SONG,
   CloudPattern, ScrollCard, ScrollDivider, WaveLine, SealButton, Disclaimer,
 } from '@/components/ScrollUI';
+
+const IS_DEV = import.meta.env.DEV;
 
 const EXAMPLE_QUESTIONS = [
   '此次求职能否顺利？',
@@ -15,7 +18,7 @@ const EXAMPLE_QUESTIONS = [
 
 export default function QuestionPage() {
   const [, navigate] = useLocation();
-  const { state, setQuestion, reset } = useDivination();
+  const { state, setQuestion, reset, setHexagramResult } = useDivination();
   const [localQ, setLocalQ] = useState(state.question);
   const [error, setError] = useState('');
   const [focused, setFocused] = useState(false);
@@ -39,6 +42,19 @@ export default function QuestionPage() {
     setLocalQ(q);
     setError('');
     textareaRef.current?.focus();
+  };
+
+  // ── 开发模式快捷测试：直接加载第01卦（乾为天）并跳转结果页 ──────────────
+  const handleTestGua01 = () => {
+    // 乾为天：6爻全阳，初爻为动爻（老阳=9），其余少阳=7
+    const lines: LineValue[] = [9, 7, 7, 7, 7, 7];
+    const originalBits = '111111';
+    const changedBits  = '011111'; // 初爻变阴
+    const movingLines  = [1];
+    reset();
+    setQuestion('测试：乾为天占卜验证经文注入');
+    setHexagramResult({ lines, originalBits, changedBits, movingLines, hasMoving: true });
+    navigate('/result');
   };
 
   return (
@@ -197,6 +213,45 @@ export default function QuestionPage() {
             查阅往卦 →
           </button>
         </div>
+
+        {/* ── 开发模式调试入口（生产不可见）── */}
+        {IS_DEV && (
+          <div
+            className="mt-6 p-3 rounded text-center"
+            style={{
+              background: 'rgba(30,20,10,0.75)',
+              border: '1px solid rgba(100,200,80,0.3)',
+            }}
+          >
+            <div className="text-[0.65rem] text-green-400/70 mb-2 tracking-widest font-mono">
+              🧪 DEV MODE
+            </div>
+            <button
+              onClick={handleTestGua01}
+              className="text-[0.75rem] font-mono tracking-wide transition-colors"
+              style={{
+                color: '#b5e853',
+                background: 'rgba(60,100,40,0.4)',
+                border: '1px solid rgba(100,200,80,0.4)',
+                padding: '6px 16px',
+                borderRadius: '2px',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(60,100,40,0.7)';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(60,100,40,0.4)';
+              }}
+            >
+              直接测试解读 → 乾为天（第01卦，初爻动）
+            </button>
+            <div className="text-[0.62rem] text-green-400/40 mt-1.5 font-mono">
+              跳过投掷，直接验证 gua_ci / xiang_yue / yao_ci 注入
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

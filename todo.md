@@ -115,3 +115,20 @@
 - [x] 创建 client/src/components/GestureThrowPanel.tsx（宣纸风格 UI）
 - [x] 接入 ThrowPage：手势面板右下角浮层，onThrow 回调触发 handleThrowOne
 - [x] window.startThrow 绑定正确，全部 17 个 vitest 测试通过
+
+## 测试模式（FORCE_GUA）
+- [x] 创建 server/test-fixtures/01.json（乾为天卦象固件）
+- [x] reading.ts 加入 FORCE_GUA 测试模式：读取 fixture 覆盖前端卦象数据
+- [x] 返回结果包含 testMode: true 字段
+- [x] 新增 server/reading.forceGua.test.ts（4 个测试全部通过）
+- [x] 通过 webdev_request_secrets 设置 FORCE_GUA=01
+
+## 调试功能（开发模式）
+- [x] useHexagramData.ts：loadTextData 加 cache: 'no-store'
+- [x] fetch 成功后 console.log key/url/name/guaCi[0:60]/guaCi.length
+- [x] 调试信息挂载到 window.__hexDebug[key]
+- [x] ResultPage.tsx 底部渲染调试面板（IS_DEV && debugInfo）
+
+## 测试快捷入口（开发模式）
+- [x] 首页底部添加“🧪 直接测试解读（乾为天）”按鈕（仅 IS_DEV 可见）
+- [x] 点击后构造第01卦 hexagramResult，写入 DivinationContext，跳转 /result
