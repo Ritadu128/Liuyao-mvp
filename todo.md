@@ -92,6 +92,14 @@
 ## 投掷页视觉与交互结构重构
 - [x] 贴图放入 client/public，本地路径加载（避免 CORS）
 - [x] 贴图上传 S3 CDN，CoinScene 引用更新为 CDN URL，本地文件移出项目目录
+
+## Bug 修复（用户反馈第五轮）
+- [x] 投掷页背景改为米白宣纸渐变（#F5F0E6→#EFE6D6）+ subtle vignette
+- [x] 增强暖色环境光与方向光（与提问/解答页风格一致）
+- [x] 修正贴图路径为实际 .jpg 文件（/assets/coin-front.jpg, /assets/coin-back.jpg）
+- [x] 贴图加载失败时 console.error 输出 URL，避免静默失败
+- [x] 修复逐次投掷第6爻后卡住：用 throwsRef 同步跟踪数组，避免 React state 异步问题
+- [x] 统一 finalizeCasting 逻辑，逐次/一键共用同一出口
 - [x] CoinScene：俯视 30-45° 斜角相机，FOV 35-50°
 - [x] CoinScene：三材质圆柱（顶/底贴图+侧面金属）
 - [x] CoinScene：三枚硬币初始位置/角速度不同，落地时间差 ±0.15s
@@ -100,3 +108,10 @@
 - [x] ThrowPage：顶部半透明问题条 ≤60px
 - [x] ThrowPage：底部 HUD 进度层 ≤15vh（第x/6爻+六条线）
 - [x] ThrowPage：投掷中不显示文字结果，停住后显示本爻名称
+
+## 手势投掷模块（MediaPipe）
+- [x] 安装 @mediapipe/tasks-vision 0.10.32
+- [x] 创建 client/src/hooks/useGestureThrow.ts（核心手势识别 Hook）
+- [x] 创建 client/src/components/GestureThrowPanel.tsx（宣纸风格 UI）
+- [x] 接入 ThrowPage：手势面板右下角浮层，onThrow 回调触发 handleThrowOne
+- [x] window.startThrow 绑定正确，全部 17 个 vitest 测试通过

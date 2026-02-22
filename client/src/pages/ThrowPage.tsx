@@ -18,6 +18,7 @@ import { useLocation } from 'wouter';
 import { useDivination } from '@/contexts/DivinationContext';
 import { throwOnce, throwAllSix, computeHexagram, getLineDisplay } from '@/lib/liuyao';
 import CoinScene, { type CoinFace } from '@/components/CoinScene';
+import { GestureThrowPanel } from '@/components/GestureThrowPanel';
 import type { ThrowResult } from '@/lib/liuyao';
 
 // ─── 六爻线条（HUD 内使用）────────────────────────────────────────────────
@@ -63,6 +64,12 @@ export default function ThrowPage() {
    * 直接读 state.throws 会得到旧值，因此用 ref 保证读到最新数组。
    */
   const throwsRef = useRef<ThrowResult[]>([]);
+
+  // 手势投掷回调：触发单次投掷（power 暂不影响结果）
+  const handleGestureThrow = useCallback((_power: number) => {
+    handleThrowOne();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 待提交的投掷结果（等动画结束后再更新状态）
   const pendingRef = useRef<{
@@ -494,8 +501,19 @@ export default function ThrowPage() {
           ))}
         </div>
       </div>
+      {/* ── 手势投掷面板（右下角浮层）── */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 'calc(15vh + 16px)',
+          right: '16px',
+          zIndex: 40,
+        }}
+      >
+        <GestureThrowPanel onThrow={handleGestureThrow} />
+      </div>
 
-      {/* 全局 CSS 动画 */}
+        {/* 全局 CSS 动画 */}
       <style>{`
         @keyframes fadeInUp {
           from { opacity: 0; transform: translateX(-50%) translateY(8px); }
