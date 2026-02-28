@@ -297,4 +297,62 @@
 .ancient-reading-content li {
   color: #3d2e1a;
   line-height: 2.2;
+  margin-bottom: 1.4em;
+}
+.ancient-reading-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── 解读分节标题（## / ###）─────────────────────────────── */
+.ancient-reading-content h1,
+.ancient-reading-content h2,
+.ancient-reading-content h3,
+.ancient-reading-content h4 {
+  font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.22em;
+  color: #5a3510;
+  margin-top: 1.8em;
+  margin-bottom: 0.65em;
+  padding: 0.38em 1em 0.38em 0.8em;
+  background: linear-gradient(to right, rgba(255, 232, 150, 0.38), rgba(255, 248, 220, 0.18));
+  border-left: 3px solid rgba(180, 110, 30, 0.6);
+  border-radius: 0 2px 2px 0;
+  line-height: 1.7;
+}
+.ancient-reading-content h1:first-child,
+.ancient-reading-content h2:first-child,
+.ancient-reading-content h3:first-child {
+  margin-top: 0.2em;
+}
+
+/* ─── 关键词高亮（**bold** → 暖金色背景）──────────────────── */
+.ancient-reading-content strong,
+.ancient-reading-content b {
+  font-weight: 600;
+  color: #6b3a0a;
+  background: rgba(255, 210, 80, 0.25);
+  padding: 0.04em 0.28em;
+  border-radius: 2px;
+  border-bottom: 1px solid rgba(180, 120, 30, 0.28);
+}
+
+/* ─── 分隔线（---）─────────────────────────────────────────── */
+.ancient-reading-content hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(175, 130, 50, 0.3), transparent);
+  margin: 1.6em 0;
+}
+
+/* ─── 列表项间距 ────────────────────────────────────────────── */
+.ancient-reading-content ul,
+.ancient-reading-content ol {
+  padding-left: 1.4em;
+  margin-bottom: 1.2em;
+}
+.ancient-reading-content li {
+  margin-bottom: 0.5em;
+  line-height: 2.0;
 }
