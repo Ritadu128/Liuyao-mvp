@@ -1,9 +1,50 @@
 import { z } from 'zod';
 import { publicProcedure, router } from '../_core/trpc';
+import { TRPCError } from '@trpc/server';
 import { getDb } from '../db';
-import { readings } from '../../drizzle/schema';
-import { eq, desc } from 'drizzle-orm';
+import { readings, ipRateLimits } from '../../drizzle/schema';
+import { eq, desc, and } from 'drizzle-orm';
 import { ENV } from '../_core/env';
+
+const DAILY_LIMIT = 10; // 每个 IP 每天最多解读次数
+
+// ── IP 限流检查与计数 ────────────────────────────────────────────
+function getTodayDate(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+async function checkAndIncrementIpLimit(ip: string): Promise<{ allowed: boolean; remaining: number }> {
+  const db = await getDb();
+  if (!db) return { allowed: true, remaining: DAILY_LIMIT }; // DB 不可用时放行
+
+  const today = getTodayDate();
+
+  const rows = await db
+    .select()
+    .from(ipRateLimits)
+    .where(and(eq(ipRateLimits.ip, ip), eq(ipRateLimits.date, today)))
+    .limit(1);
+
+  const current = rows[0];
+
+  if (!current) {
+    // 今天第一次，插入新记录
+    await db.insert(ipRateLimits).values({ ip, date: today, count: 1 });
+    return { allowed: true, remaining: DAILY_LIMIT - 1 };
+  }
+
+  if (current.count >= DAILY_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  // 计数 +1
+  await db
+    .update(ipRateLimits)
+    .set({ count: current.count + 1 })
+    .where(eq(ipRateLimits.id, current.id));
+
+  return { allowed: true, remaining: DAILY_LIMIT - (current.count + 1) };
+}
 
 // ── DeepSeek API 调用（替代 Manus 内置 LLM）────────────────────────────────
 async function callDeepSeek(messages: { role: string; content: string }[], responseFormat?: object) {
@@ -128,6 +169,20 @@ export const readingRouter = router({
   generate: publicProcedure
     .input(GenerateInputSchema)
     .mutation(async ({ input, ctx }) => {
+      // ── IP 限流检查 ───────────────────────────────────────────────────────
+      const clientIp =
+        (ctx.req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        ctx.req.socket?.remoteAddress ||
+        'unknown';
+
+      const rateCheck = await checkAndIncrementIpLimit(clientIp);
+      if (!rateCheck.allowed) {
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: `今日占卜次数已达上限（每天最多 ${DAILY_LIMIT} 次），明日再来。`,
+        });
+      }
+
       // ── 调用 LLM 生成解读 ─────────────────────────────────────────────────
       const prompt = buildPrompt(input);
 

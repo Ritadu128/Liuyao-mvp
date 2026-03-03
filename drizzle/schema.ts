@@ -52,3 +52,14 @@ export const readings = mysqlTable("readings", {
 
 export type Reading = typeof readings.$inferSelect;
 export type InsertReading = typeof readings.$inferInsert;
+
+// IP 限流表：记录每个 IP 每天的调用次数
+export const ipRateLimits = mysqlTable("ipRateLimits", {
+  id: int("id").autoincrement().primaryKey(),
+  ip: varchar("ip", { length: 64 }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  count: int("count").notNull().default(0),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IpRateLimit = typeof ipRateLimits.$inferSelect;
