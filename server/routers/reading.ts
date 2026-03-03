@@ -248,31 +248,54 @@ export const readingRouter = router({
       };
     }),
 
-  // 获取历史记录列表
+  // 获取历史记录列表（仅返回当前登录用户自己的记录）
   list: publicProcedure
     .input(z.object({ limit: z.number().int().min(1).max(50).default(20) }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) return [];
+
+      const userId = (ctx.user as any)?.id ?? null;
+      // 未登录用户无法查看历史记录（历史记录需要登录才能关联）
+      if (!userId) return [];
+
       const rows = await db
         .select()
         .from(readings)
+        .where(eq(readings.userId, userId))
         .orderBy(desc(readings.createdAt))
         .limit(input.limit);
       return rows;
     }),
 
-  // 获取单条记录
+  // 获取单条记录（严格校验归属，只能查看自己的记录）
   getById: publicProcedure
     .input(z.object({ id: z.number().int() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) return null;
+
+      const userId = (ctx.user as any)?.id ?? null;
+
       const rows = await db
         .select()
         .from(readings)
         .where(eq(readings.id, input.id))
         .limit(1);
-      return rows[0] ?? null;
+
+      const row = rows[0] ?? null;
+      if (!row) return null;
+
+      // 严格校验：记录必须属于当前用户
+      // 未登录用户（userId=null）只能访问 userId 为 null 的记录
+      // 已登录用户只能访问自己的记录
+      if (row.userId !== userId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '无权访问此记录',
+        });
+      }
+
+      return row;
     }),
 });
