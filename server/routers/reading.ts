@@ -1,53 +1,40 @@
 import { z } from 'zod';
 import { publicProcedure, router } from '../_core/trpc';
-import { invokeLLM } from '../_core/llm';
 import { getDb } from '../db';
 import { readings } from '../../drizzle/schema';
 import { eq, desc } from 'drizzle-orm';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { ENV } from '../_core/env';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ── DeepSeek API 调用（替代 Manus 内置 LLM）────────────────────────────────
+async function callDeepSeek(messages: { role: string; content: string }[], responseFormat?: object) {
+  const apiKey = ENV.deepseekApiKey;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set');
 
-// ── Test fixture loader ─────────────────────────────────────────────────────
-/**
- * 当环境变量 FORCE_GUA=<key> 时（如 "01"），忽略前端传入的卦象数据，
- * 直接从 server/test-fixtures/<key>.json 读取卦象并构造 generate 输入。
- * 返回 null 表示未启用测试模式。
- */
-function loadForceGuaFixture(): {
-  key: string;
-  name: string;
-  bits: string;
-  gua_ci: string;
-  xiang_yue: string;
-  yao_ci: Record<string, string>;
-} | null {
-  const forceGua = process.env.FORCE_GUA;
-  if (!forceGua) return null;
-
-  const fixturePath = path.resolve(
-    __dirname,
-    '../test-fixtures',
-    `${forceGua}.json`
-  );
-
-  if (!fs.existsSync(fixturePath)) {
-    console.warn(`[Reading] FORCE_GUA=${forceGua} 但找不到 fixture 文件: ${fixturePath}`);
-    return null;
+  const body: Record<string, unknown> = {
+    model: 'deepseek-chat',
+    messages,
+    temperature: 0.7,
+    max_tokens: 2048,
+  };
+  if (responseFormat) {
+    body.response_format = responseFormat;
   }
 
-  try {
-    const raw = fs.readFileSync(fixturePath, 'utf-8');
-    const data = JSON.parse(raw);
-    console.log(`[Reading] 🧪 测试模式：FORCE_GUA=${forceGua}，使用 ${data.name}（第${data.key}卦）`);
-    return data;
-  } catch (e) {
-    console.error(`[Reading] FORCE_GUA fixture 解析失败:`, e);
-    return null;
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`DeepSeek API error ${res.status}: ${errText}`);
   }
+
+  return res.json();
 }
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
@@ -86,6 +73,17 @@ function buildPrompt(input: z.infer<typeof GenerateInputSchema>): string {
     ? input.yaoCi.map(y => `${LINE_POSITION_LABELS[y.position-1]}爻：${y.text}`).join('\n')
     : '（无动爻）';
 
+  // 构建经文原文区块（若字段为空则标注"缺失"）
+  const guaCiBlock = input.guaCi.trim()
+    ? `卦辞：${input.guaCi}`
+    : '卦辞：（缺失）';
+  const xiangYueBlock = input.xiangYue.trim()
+    ? `象曰：${input.xiangYue}`
+    : '象曰：（缺失）';
+  const yaoCiBlock = input.yaoCi.length > 0
+    ? `动爻爻辞：\n${yaoCiText}`
+    : '';
+
   return `你是一位精通《周易》六爻占卜的易学大师，请为以下占卜结果提供专业解读。
 
 【占卜信息】
@@ -94,10 +92,10 @@ function buildPrompt(input: z.infer<typeof GenerateInputSchema>): string {
 ${changedDesc}
 ${movingDesc}
 
-【经文原文】
-卦辞：${input.guaCi}
-象曰：${input.xiangYue}
-${input.yaoCi.length > 0 ? '动爻爻辞：\n' + yaoCiText : ''}
+【经文原文】（以下为本次占卜的唯一经文来源）
+${guaCiBlock}
+${xiangYueBlock}
+${yaoCiBlock}
 
 请提供两部分解读，严格按照以下 JSON 格式返回：
 {
@@ -110,7 +108,8 @@ ${input.yaoCi.length > 0 ? '动爻爻辞：\n' + yaoCiText : ''}
 2. 卦象解读：先引用经文原文，再用现代语言解释，最后用一个生动的故事或比喻来阐释卦义
 3. 语言：文白相间，既有古典韵味又通俗易懂
 4. 态度：客观中立，不做绝对预测，引导积极思考
-5. 严格返回合法 JSON，不要有额外文字`;
+5. 【重要】经文引用规则：只能引用【经文原文】区块中提供的原句，不得自行补充、杜撰或引用未出现在输入中的经文。若某字段标注"（缺失）"，则在对应位置直接留空，不得替换为其他经文
+6. 严格返回合法 JSON，不要有额外文字`;
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
@@ -118,68 +117,25 @@ export const readingRouter = router({
   generate: publicProcedure
     .input(GenerateInputSchema)
     .mutation(async ({ input, ctx }) => {
-      // ── 测试模式：FORCE_GUA 覆盖前端传入的卦象数据 ──────────────────────
-      const fixture = loadForceGuaFixture();
-      const testMode = fixture !== null;
-
-      let effectiveInput = input;
-      if (fixture) {
-        // 用第一爻（初九）作为动爻，让解读更丰富
-        const movingLines = [1];
-        effectiveInput = {
-          ...input, // 保留 question（来自前端）
-          originalKey: fixture.key,
-          originalName: fixture.name,
-          originalBits: fixture.bits,
-          changedKey: null,
-          changedName: null,
-          changedBits: null,
-          movingLines,
-          guaCi: fixture.gua_ci,
-          xiangYue: fixture.xiang_yue,
-          yaoCi: movingLines.map(pos => ({
-            position: pos,
-            text: fixture.yao_ci[String(pos)] ?? '',
-          })),
-          linesJson: JSON.stringify(
-            fixture.bits.split('').map(b => (b === '1' ? 9 : 8))
-          ),
-        };
-        console.log('[Reading] 🧪 effectiveInput.originalName:', effectiveInput.originalName);
-      }
-
       // ── 调用 LLM 生成解读 ─────────────────────────────────────────────────
-      const prompt = buildPrompt(effectiveInput);
+      const prompt = buildPrompt(input);
 
       let integratedReading = '';
       let hexagramReading = '';
 
       try {
-        const response = await invokeLLM({
-          messages: [
+        const response = await callDeepSeek(
+          [
             {
               role: 'system',
-              content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。'
+              content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。'
             },
             { role: 'user', content: prompt }
           ],
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: 'reading_result',
-              strict: true,
-              schema: {
-                type: 'object',
-                properties: {
-                  integrated_reading: { type: 'string', description: '综合解读，400-600字' },
-                  hexagram_reading: { type: 'string', description: '卦象解读，含经文引用、现代解释、故事化解读' },
-                },
-                required: ['integrated_reading', 'hexagram_reading'],
-                additionalProperties: false,
-              },
-            },
-          },
-        });
+          {
+            type: 'json_object',
+          }
+        );
 
         const content = response.choices?.[0]?.message?.content as string | undefined;
         if (content) {
@@ -201,15 +157,15 @@ export const readingRouter = router({
           const userId = (ctx.user as any)?.id ?? null;
           const [result] = await db.insert(readings).values({
             userId,
-            question: effectiveInput.question,
-            linesJson: effectiveInput.linesJson,
-            originalKey: effectiveInput.originalKey,
-            originalName: effectiveInput.originalName,
-            originalBits: effectiveInput.originalBits,
-            changedKey: effectiveInput.changedKey ?? null,
-            changedName: effectiveInput.changedName ?? null,
-            changedBits: effectiveInput.changedBits ?? null,
-            movingLinesJson: JSON.stringify(effectiveInput.movingLines),
+            question: input.question,
+            linesJson: input.linesJson,
+            originalKey: input.originalKey,
+            originalName: input.originalName,
+            originalBits: input.originalBits,
+            changedKey: input.changedKey ?? null,
+            changedName: input.changedName ?? null,
+            changedBits: input.changedBits ?? null,
+            movingLinesJson: JSON.stringify(input.movingLines),
             integratedReading,
             hexagramReading,
           });
@@ -223,7 +179,6 @@ export const readingRouter = router({
         integratedReading,
         hexagramReading,
         readingId,
-        ...(testMode ? { testMode: true } : {}),
       };
     }),
 
