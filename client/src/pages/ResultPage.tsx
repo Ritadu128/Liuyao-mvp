@@ -11,6 +11,8 @@ import {
   CloudPattern, ScrollCard, ScrollDivider, WaveLine, AncientTabs,
   AncientLoading, Disclaimer,
 } from '@/components/ScrollUI';
+import { useAuth } from '@/_core/hooks/useAuth';
+import { addLocalReading } from '@/hooks/useLocalHistory';
 
 type TabType = 'integrated' | 'hexagram';
 
@@ -44,12 +46,31 @@ export default function ResultPage() {
     return () => clearTimeout(t);
   }, []);
 
+  const { user } = useAuth();
+
   const generateReading = trpc.reading.generate.useMutation({
     onSuccess: (data: { integratedReading: string; hexagramReading: string; readingId: number | null }) => {
       setIntegratedReading(data.integratedReading);
       setHexagramReading(data.hexagramReading);
       setIsLoadingReading(false);
       if (data.readingId) setSavedReadingId(data.readingId);
+
+      // 未登录用户：将解读结果存入 localStorage
+      if (!user && hexResult && originalHexagram) {
+        addLocalReading({
+          question: state.question,
+          linesJson: JSON.stringify(hexResult.lines),
+          originalKey: originalHexagram.key,
+          originalName: originalHexagram.name,
+          originalBits: hexResult.originalBits,
+          changedKey: changedHexagram?.key ?? null,
+          changedName: changedHexagram?.name ?? null,
+          changedBits: hexResult.changedBits !== hexResult.originalBits ? hexResult.changedBits : null,
+          movingLinesJson: JSON.stringify(hexResult.movingLines),
+          integratedReading: data.integratedReading,
+          hexagramReading: data.hexagramReading,
+        });
+      }
     },
     onError: (err) => {
       setIsLoadingReading(false);

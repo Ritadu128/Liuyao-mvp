@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { trpc } from '@/lib/trpc';
-import { useDivination } from '@/contexts/DivinationContext';
+import { useAuth } from '@/_core/hooks/useAuth';
+import { getLocalReadings, getLocalReadingById, type LocalReading } from '@/hooks/useLocalHistory';
 import { rebuildHexagram } from '@/lib/liuyao';
 import type { LineValue } from '@/lib/liuyao';
 import { HexagramDisplay } from '@/components/HexagramLine';
@@ -9,15 +10,72 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Streamdown } from 'streamdown';
 
+// 统一的展示类型，兼容后端记录和本地记录
+type DisplayReading = {
+  id: string;
+  question: string;
+  linesJson: string;
+  originalName: string;
+  changedName: string | null;
+  createdAt: string | Date;
+  integratedReading: string | null;
+  hexagramReading: string | null;
+  isLocal: boolean;
+};
+
 export default function HistoryPage() {
   const [, navigate] = useLocation();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
 
-  const { data: list, isLoading } = trpc.reading.list.useQuery({ limit: 30 });
-  const { data: detail } = trpc.reading.getById.useQuery(
-    { id: selectedId! },
-    { enabled: selectedId !== null }
+  // 后端数据（仅已登录用户）
+  const { data: serverList, isLoading: serverLoading } = trpc.reading.list.useQuery(
+    { limit: 30 },
+    { enabled: !!user }
   );
+
+  // 本地 localStorage 数据（仅未登录用户）
+  const localList = useMemo<LocalReading[]>(() => {
+    if (user) return []; // 已登录用户不用本地数据
+    return getLocalReadings();
+  }, [user]);
+
+  // 合并展示列表
+  const displayList = useMemo<DisplayReading[]>(() => {
+    if (user && serverList) {
+      return serverList.map(r => ({
+        id: String(r.id),
+        question: r.question,
+        linesJson: r.linesJson,
+        originalName: r.originalName,
+        changedName: r.changedName ?? null,
+        createdAt: r.createdAt,
+        integratedReading: r.integratedReading ?? null,
+        hexagramReading: r.hexagramReading ?? null,
+        isLocal: false,
+      }));
+    }
+    return localList.map(r => ({
+      id: r.id,
+      question: r.question,
+      linesJson: r.linesJson,
+      originalName: r.originalName,
+      changedName: r.changedName,
+      createdAt: r.createdAt,
+      integratedReading: r.integratedReading,
+      hexagramReading: r.hexagramReading,
+      isLocal: true,
+    }));
+  }, [user, serverList, localList]);
+
+  // 获取选中记录的详情
+  const selectedItem = useMemo(() => {
+    if (!selectedId) return null;
+    const found = displayList.find(r => r.id === selectedId);
+    return found ?? null;
+  }, [selectedId, displayList]);
+
+  const isLoading = authLoading || (!!user && serverLoading);
 
   const formatDate = (d: Date | string) => {
     const date = new Date(d);
@@ -38,13 +96,16 @@ export default function HistoryPage() {
           ← 返回
         </button>
         <h1 className="text-lg font-medium text-stone-700 tracking-wide">占卜历史</h1>
+        {!user && (
+          <span className="ml-auto text-xs text-stone-400">仅本设备可见</span>
+        )}
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
         </div>
-      ) : !list || list.length === 0 ? (
+      ) : displayList.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-4">📜</div>
           <p className="text-stone-400 text-sm">暂无占卜记录</p>
@@ -57,7 +118,7 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {list.map(item => {
+          {displayList.map(item => {
             const lines = JSON.parse(item.linesJson) as LineValue[];
             const hexResult = rebuildHexagram(lines);
             const isSelected = selectedId === item.id;
@@ -121,21 +182,21 @@ export default function HistoryPage() {
                 </div>
 
                 {/* 展开详情 */}
-                {isSelected && detail && detail.id === item.id && (
+                {isSelected && selectedItem && selectedItem.id === item.id && (
                   <div className="border-t border-amber-100 px-4 py-4 space-y-4 bg-amber-50/30">
-                    {detail.integratedReading && (
+                    {selectedItem.integratedReading && (
                       <div>
                         <h4 className="text-xs font-medium text-amber-700 mb-2">综合解读</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
-                          <Streamdown>{detail.integratedReading}</Streamdown>
+                          <Streamdown>{selectedItem.integratedReading}</Streamdown>
                         </div>
                       </div>
                     )}
-                    {detail.hexagramReading && (
+                    {selectedItem.hexagramReading && (
                       <div>
                         <h4 className="text-xs font-medium text-amber-700 mb-2">卦象解读</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
-                          <Streamdown>{detail.hexagramReading}</Streamdown>
+                          <Streamdown>{selectedItem.hexagramReading}</Streamdown>
                         </div>
                       </div>
                     )}
