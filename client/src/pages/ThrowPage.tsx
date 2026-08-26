@@ -55,6 +55,7 @@ export default function ThrowPage() {
   const [showLineResult, setShowLineResult] = useState(false);
   const [lastLineDesc, setLastLineDesc]     = useState('');
   const [lastLineIdx, setLastLineIdx]       = useState(0);
+  const [throwPower, setThrowPower]         = useState(0.5);
   // 用于强制刷新顶部计数显示
   const [throwCount, setThrowCount]         = useState(0);
 
@@ -64,12 +65,6 @@ export default function ThrowPage() {
    * 直接读 state.throws 会得到旧值，因此用 ref 保证读到最新数组。
    */
   const throwsRef = useRef<ThrowResult[]>([]);
-
-  // 手势投掷回调：触发单次投掷（power 暂不影响结果）
-  const handleGestureThrow = useCallback((_power: number) => {
-    handleThrowOne();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // 待提交的投掷结果（等动画结束后再更新状态）
   const pendingRef = useRef<{
@@ -160,11 +155,12 @@ export default function ThrowPage() {
   }, [addThrow, setThrows, finalizeCasting]);
 
   // ── 单次投掷 ──────────────────────────────────────────────────────────────
-  const handleThrowOne = useCallback(() => {
+  const handleThrowOne = useCallback((power: number = 0.5) => {
     const currentCount = throwsRef.current.length;
     if (isAnimating || currentCount >= 6) return;
 
     setShowLineResult(false);
+    setThrowPower(Math.max(0, Math.min(1, power)));
     const result = throwOnce();
 
     console.log('[ThrowPage] 开始投掷第', currentCount + 1, '爻 | sum:', result.sum,
@@ -173,14 +169,20 @@ export default function ThrowPage() {
     pendingRef.current = { result, mode: 'single' };
     setCoinResults(result.coins.map(c => c === 1 ? 3 : 2) as [CoinFace, CoinFace, CoinFace]);
     setIsAnimating(true);
-  }, [isAnimating]);
+    }, [isAnimating]);
 
-  // ── 一键成卦 ──────────────────────────────────────────────────────────────
+  // 手势释放后沿用单次投掷流程；由 handleThrowOne 同步拦截动画中和六爻完成后的重复触发。
+  const handleGestureThrow = useCallback((power: number) => {
+    handleThrowOne(power);
+  }, [handleThrowOne]);
+
+  // ── 一键成卦 ─────────────────────────────────────────────────────────────
   const handleThrowAll = useCallback(() => {
     const currentCount = throwsRef.current.length;
     if (isAnimating || currentCount >= 6) return;
 
     setShowLineResult(false);
+    setThrowPower(0.5);
     const results = throwAllSix();
     const last    = results[results.length - 1]!;
 
@@ -277,10 +279,11 @@ export default function ThrowPage() {
           zIndex: 10,
         }}
       >
-        <CoinScene
-          throwResults={coinResults}
-          onAnimationComplete={handleAnimationComplete}
-        />
+          <CoinScene
+            throwResults={coinResults}
+            power={throwPower}
+            onAnimationComplete={handleAnimationComplete}
+          />
 
         {/* 投掷中：极简提示 */}
         {isAnimating && (
@@ -401,7 +404,7 @@ export default function ThrowPage() {
             <>
               {/* 主投掷按钮 */}
               <button
-                onClick={handleThrowOne}
+                onClick={() => handleThrowOne()}
                 disabled={isAnimating}
                 style={{
                   width: '100%',
@@ -510,7 +513,10 @@ export default function ThrowPage() {
           zIndex: 40,
         }}
       >
-        <GestureThrowPanel onThrow={handleGestureThrow} />
+        <GestureThrowPanel
+          onThrow={handleGestureThrow}
+          disabled={isAnimating || isCastingDone}
+        />
       </div>
 
         {/* 全局 CSS 动画 */}

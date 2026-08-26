@@ -3,9 +3,9 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { ENV } from "./env";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -30,11 +30,18 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  // 只有在部署环境明确开启时才信任代理头，避免本地伪造 X-Forwarded-For 绕过限流。
+  if (ENV.trustProxy) app.set("trust proxy", 1);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
+  // OAuth 为后续可选能力；匿名版本未配置认证环境变量时不注册回调路由。
+  if (process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID && process.env.JWT_SECRET) {
+    const { registerOAuthRoutes } = await import("./oauth");
+    registerOAuthRoutes(app);
+  } else {
+    console.info("[OAuth] Disabled: anonymous mode is active.");
+  }
   // tRPC API
   app.use(
     "/api/trpc",

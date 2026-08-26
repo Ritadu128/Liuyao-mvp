@@ -1,5 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
+import { ENV } from "./env";
 import { sdk } from "./sdk";
 
 export type TrpcContext = {
@@ -12,6 +13,11 @@ export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
   let user: User | null = null;
+
+  // 匿名优先版本未配置 OAuth 时，公开接口无需触发会话校验。
+  if (!ENV.oAuthServerUrl || !ENV.appId || !ENV.cookieSecret) {
+    return { req: opts.req, res: opts.res, user };
+  }
 
   try {
     user = await sdk.authenticateRequest(opts.req);

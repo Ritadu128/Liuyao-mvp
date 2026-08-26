@@ -15,6 +15,20 @@
       "when": 1771634522654,
       "tag": "0001_simple_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1771635000000,
+      "tag": "0002_jazzy_ultron",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787762306700,
+      "tag": "0003_red_havok",
+      "breakpoints": true
     }
   ]
 }

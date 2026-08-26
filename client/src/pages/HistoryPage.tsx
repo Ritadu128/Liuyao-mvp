@@ -1,93 +1,44 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
-import { trpc } from '@/lib/trpc';
-import { useAuth } from '@/_core/hooks/useAuth';
-import { getLocalReadings, getLocalReadingById, type LocalReading } from '@/hooks/useLocalHistory';
+import { getLocalReadings, type LocalReading } from '@/hooks/useLocalHistory';
 import { rebuildHexagram } from '@/lib/liuyao';
 import type { LineValue } from '@/lib/liuyao';
 import { HexagramDisplay } from '@/components/HexagramLine';
-import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Streamdown } from 'streamdown';
-
-// 统一的展示类型，兼容后端记录和本地记录
-type DisplayReading = {
-  id: string;
-  question: string;
-  linesJson: string;
-  originalName: string;
-  changedName: string | null;
-  createdAt: string | Date;
-  integratedReading: string | null;
-  hexagramReading: string | null;
-  isLocal: boolean;
-};
 
 export default function HistoryPage() {
   const [, navigate] = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { user, loading: authLoading } = useAuth();
 
-  // 后端数据（仅已登录用户）
-  const { data: serverList, isLoading: serverLoading } = trpc.reading.list.useQuery(
-    { limit: 30 },
-    { enabled: !!user }
-  );
+  // 匿名版本只读取当前浏览器的 localStorage；刷新或重新打开页面后仍可恢复。
+  const readings = useMemo<LocalReading[]>(() => getLocalReadings(), []);
 
-  // 本地 localStorage 数据（仅未登录用户）
-  const localList = useMemo<LocalReading[]>(() => {
-    if (user) return []; // 已登录用户不用本地数据
-    return getLocalReadings();
-  }, [user]);
-
-  // 合并展示列表
-  const displayList = useMemo<DisplayReading[]>(() => {
-    if (user && serverList) {
-      return serverList.map(r => ({
-        id: String(r.id),
-        question: r.question,
-        linesJson: r.linesJson,
-        originalName: r.originalName,
-        changedName: r.changedName ?? null,
-        createdAt: r.createdAt,
-        integratedReading: r.integratedReading ?? null,
-        hexagramReading: r.hexagramReading ?? null,
-        isLocal: false,
-      }));
-    }
-    return localList.map(r => ({
-      id: r.id,
-      question: r.question,
-      linesJson: r.linesJson,
-      originalName: r.originalName,
-      changedName: r.changedName,
-      createdAt: r.createdAt,
-      integratedReading: r.integratedReading,
-      hexagramReading: r.hexagramReading,
-      isLocal: true,
-    }));
-  }, [user, serverList, localList]);
-
-  // 获取选中记录的详情
   const selectedItem = useMemo(() => {
     if (!selectedId) return null;
-    const found = displayList.find(r => r.id === selectedId);
-    return found ?? null;
-  }, [selectedId, displayList]);
+    return readings.find(reading => reading.id === selectedId) ?? null;
+  }, [readings, selectedId]);
 
-  const isLoading = authLoading || (!!user && serverLoading);
-
-  const formatDate = (d: Date | string) => {
-    const date = new Date(d);
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '时间未知';
     return date.toLocaleDateString('zh-CN', {
-      month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit'
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
+  };
+
+  const getHexagram = (linesJson: string) => {
+    try {
+      const lines = JSON.parse(linesJson) as LineValue[];
+      if (!Array.isArray(lines) || lines.length !== 6) return null;
+      return rebuildHexagram(lines);
+    } catch {
+      return null;
+    }
   };
 
   return (
     <div className="min-h-screen max-w-lg mx-auto px-4 py-6">
-      {/* 顶部 */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate('/')}
@@ -96,16 +47,10 @@ export default function HistoryPage() {
           ← 返回
         </button>
         <h1 className="text-lg font-medium text-stone-700 tracking-wide">占卜历史</h1>
-        {!user && (
-          <span className="ml-auto text-xs text-stone-400">仅本设备可见</span>
-        )}
+        <span className="ml-auto text-xs text-stone-400">仅保存在本浏览器</span>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
-        </div>
-      ) : displayList.length === 0 ? (
+      {readings.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-4">📜</div>
           <p className="text-stone-400 text-sm">暂无占卜记录</p>
@@ -118,9 +63,8 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {displayList.map(item => {
-            const lines = JSON.parse(item.linesJson) as LineValue[];
-            const hexResult = rebuildHexagram(lines);
+          {readings.map(item => {
+            const hexResult = getHexagram(item.linesJson);
             const isSelected = selectedId === item.id;
 
             return (
@@ -134,22 +78,21 @@ export default function HistoryPage() {
                 )}
                 onClick={() => setSelectedId(isSelected ? null : item.id)}
               >
-                {/* 列表项头部 */}
                 <div className="p-4 flex gap-4 items-start">
-                  {/* 卦象缩略图 */}
                   <div className="shrink-0 w-16">
-                    <HexagramDisplay
-                      lines={hexResult.lines}
-                      movingLines={hexResult.movingLines}
-                      size="sm"
-                    />
+                    {hexResult ? (
+                      <HexagramDisplay
+                        lines={hexResult.lines}
+                        movingLines={hexResult.movingLines}
+                        size="sm"
+                      />
+                    ) : (
+                      <div className="h-16 flex items-center justify-center text-xs text-stone-400">卦象缺失</div>
+                    )}
                   </div>
 
-                  {/* 信息 */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-stone-700 text-sm font-medium truncate mb-1">
-                      {item.question}
-                    </p>
+                    <p className="text-stone-700 text-sm font-medium truncate mb-1">{item.question}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                         {item.originalName}
@@ -162,15 +105,13 @@ export default function HistoryPage() {
                           </span>
                         </>
                       )}
-                      {hexResult.movingLines.length > 0 && (
+                      {hexResult && hexResult.movingLines.length > 0 && (
                         <span className="text-xs text-amber-500">
-                          {hexResult.movingLines.map(p => ['初','二','三','四','五','上'][p-1] + '爻').join(' ')} 动
+                          {hexResult.movingLines.map(position => ['初', '二', '三', '四', '五', '上'][position - 1] + '爻').join(' ')} 动
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-stone-400 mt-1.5">
-                      {formatDate(item.createdAt)}
-                    </p>
+                    <p className="text-xs text-stone-400 mt-1.5">{formatDate(item.createdAt)}</p>
                   </div>
 
                   <div className={cn(
@@ -181,8 +122,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
 
-                {/* 展开详情 */}
-                {isSelected && selectedItem && selectedItem.id === item.id && (
+                {isSelected && selectedItem?.id === item.id && (
                   <div className="border-t border-amber-100 px-4 py-4 space-y-4 bg-amber-50/30">
                     {selectedItem.integratedReading && (
                       <div>
@@ -201,8 +141,8 @@ export default function HistoryPage() {
                       </div>
                     )}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={event => {
+                        event.stopPropagation();
                         navigate('/');
                       }}
                       className="text-xs text-amber-600 hover:text-amber-800 transition-colors"

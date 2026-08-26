@@ -11,7 +11,6 @@ import {
   CloudPattern, ScrollCard, ScrollDivider, WaveLine, AncientTabs,
   AncientLoading, Disclaimer,
 } from '@/components/ScrollUI';
-import { useAuth } from '@/_core/hooks/useAuth';
 import { addLocalReading } from '@/hooks/useLocalHistory';
 
 type TabType = 'integrated' | 'hexagram';
@@ -46,8 +45,6 @@ export default function ResultPage() {
     return () => clearTimeout(t);
   }, []);
 
-  const { user } = useAuth();
-
   const generateReading = trpc.reading.generate.useMutation({
     onSuccess: (data: { integratedReading: string; hexagramReading: string; readingId: number | null }) => {
       setIntegratedReading(data.integratedReading);
@@ -55,8 +52,8 @@ export default function ResultPage() {
       setIsLoadingReading(false);
       if (data.readingId) setSavedReadingId(data.readingId);
 
-      // 未登录用户：将解读结果存入 localStorage
-      if (!user && hexResult && originalHexagram) {
+      // 匿名版本始终保存到当前浏览器，避免 OAuth 或服务端历史成为使用前提。
+      if (hexResult && originalHexagram) {
         addLocalReading({
           question: state.question,
           linesJson: JSON.stringify(hexResult.lines),

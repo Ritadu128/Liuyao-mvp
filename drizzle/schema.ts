@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -60,6 +60,8 @@ export const ipRateLimits = mysqlTable("ipRateLimits", {
   date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
   count: int("count").notNull().default(0),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, table => [
+  uniqueIndex("ip_rate_limits_ip_date_unique").on(table.ip, table.date),
+]);
 
 export type IpRateLimit = typeof ipRateLimits.$inferSelect;

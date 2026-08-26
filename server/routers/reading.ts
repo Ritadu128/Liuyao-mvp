@@ -1,84 +1,145 @@
 import { z } from 'zod';
-import { publicProcedure, router } from '../_core/trpc';
 import { TRPCError } from '@trpc/server';
-import { getDb } from '../db';
-import { readings, ipRateLimits } from '../../drizzle/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
+import { publicProcedure, router } from '../_core/trpc';
 import { ENV } from '../_core/env';
+import { getDb } from '../db';
+import { ipRateLimits, readings } from '../../drizzle/schema';
 
-const DAILY_LIMIT = 10; // 每个 IP 每天最多解读次数
+const DAILY_LIMIT = 10;
+const DEFAULT_DEEPSEEK_TIMEOUT_MS = 20_000;
 
-// ── IP 限流检查与计数 ────────────────────────────────────────────
 function getTodayDate(): string {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return new Date().toISOString().slice(0, 10);
 }
 
+function getDeepSeekTimeoutMs(): number {
+  const configured = Number.parseInt(ENV.deepseekTimeoutMs, 10);
+  if (!Number.isFinite(configured)) return DEFAULT_DEEPSEEK_TIMEOUT_MS;
+  return Math.min(Math.max(configured, 3_000), 60_000);
+}
+
+class DeepSeekRequestError extends Error {
+  constructor(
+    public readonly kind: 'timeout' | 'upstream' | 'invalid_response',
+    cause?: unknown,
+  ) {
+    super(kind);
+    this.cause = cause;
+  }
+}
+
+/**
+ * 通过 MySQL 唯一索引 (ip, date) 的冲突更新原子递增计数。
+ * affectedRows 为 0 代表计数已满且本次没有递增；数据库不可用时必须失败关闭，
+ * 不能绕过服务端每日限额。
+ */
 async function checkAndIncrementIpLimit(ip: string): Promise<{ allowed: boolean; remaining: number }> {
   const db = await getDb();
-  if (!db) return { allowed: true, remaining: DAILY_LIMIT }; // DB 不可用时放行
-
-  const today = getTodayDate();
-
-  const rows = await db
-    .select()
-    .from(ipRateLimits)
-    .where(and(eq(ipRateLimits.ip, ip), eq(ipRateLimits.date, today)))
-    .limit(1);
-
-  const current = rows[0];
-
-  if (!current) {
-    // 今天第一次，插入新记录
-    await db.insert(ipRateLimits).values({ ip, date: today, count: 1 });
-    return { allowed: true, remaining: DAILY_LIMIT - 1 };
+  if (!db) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: '服务暂不可用，请稍后再试。',
+    });
   }
 
-  if (current.count >= DAILY_LIMIT) {
-    return { allowed: false, remaining: 0 };
+  try {
+    const result = await db.execute(sql`
+      INSERT INTO ${ipRateLimits} (${ipRateLimits.ip}, ${ipRateLimits.date}, ${ipRateLimits.count})
+      VALUES (${ip}, ${getTodayDate()}, 1)
+      ON DUPLICATE KEY UPDATE
+        ${ipRateLimits.count} = IF(${ipRateLimits.count} < ${DAILY_LIMIT}, ${ipRateLimits.count} + 1, ${ipRateLimits.count}),
+        ${ipRateLimits.updatedAt} = IF(${ipRateLimits.count} < ${DAILY_LIMIT}, CURRENT_TIMESTAMP, ${ipRateLimits.updatedAt})
+    `);
+
+    const header = (Array.isArray(result) ? result[0] : result) as unknown as { affectedRows?: number };
+    const allowed = (header.affectedRows ?? 0) > 0;
+
+    return {
+      allowed,
+      // 并发请求可能在返回前继续递增，此值只作为提示，不参与授权判断。
+      remaining: allowed ? 0 : 0,
+    };
+  } catch (error) {
+    if (error instanceof TRPCError) throw error;
+    console.error('[Reading] IP rate-limit database error:', error instanceof Error ? error.message : error);
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: '服务暂不可用，请稍后再试。',
+    });
   }
-
-  // 计数 +1
-  await db
-    .update(ipRateLimits)
-    .set({ count: current.count + 1 })
-    .where(eq(ipRateLimits.id, current.id));
-
-  return { allowed: true, remaining: DAILY_LIMIT - (current.count + 1) };
 }
 
-// ── DeepSeek API 调用（替代 Manus 内置 LLM）────────────────────────────────
-async function callDeepSeek(messages: { role: string; content: string }[], responseFormat?: object) {
+const DeepSeekApiResponseSchema = z.object({
+  choices: z.array(z.object({
+    message: z.object({ content: z.string().nullable().optional() }),
+  })).min(1),
+});
+
+const DeepSeekReadingSchema = z.object({
+  integrated_reading: z.string().min(1).max(12_000),
+  hexagram_reading: z.string().min(1).max(12_000),
+});
+
+async function callDeepSeek(messages: { role: 'system' | 'user'; content: string }[]) {
   const apiKey = ENV.deepseekApiKey;
-  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not set');
-
-  const body: Record<string, unknown> = {
-    model: 'deepseek-chat',
-    messages,
-    temperature: 0.7,
-    max_tokens: 2048,
-  };
-  if (responseFormat) {
-    body.response_format = responseFormat;
+  if (!apiKey) {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: '解读服务尚未配置，请稍后再试。',
+    });
   }
 
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getDeepSeekTimeoutMs());
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`DeepSeek API error ${res.status}: ${errText}`);
+  try {
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: ENV.deepseekModel,
+        messages,
+        temperature: 0.7,
+        max_tokens: 2_048,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      console.error('[Reading] DeepSeek upstream error:', response.status);
+      throw new DeepSeekRequestError('upstream');
+    }
+
+    const apiResponse = DeepSeekApiResponseSchema.safeParse(await response.json());
+    const content = apiResponse.success ? apiResponse.data.choices[0]?.message.content : undefined;
+    if (!content) throw new DeepSeekRequestError('invalid_response');
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new DeepSeekRequestError('invalid_response');
+    }
+
+    const reading = DeepSeekReadingSchema.safeParse(parsed);
+    if (!reading.success) throw new DeepSeekRequestError('invalid_response');
+    return reading.data;
+  } catch (error) {
+    if (error instanceof TRPCError || error instanceof DeepSeekRequestError) throw error;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new DeepSeekRequestError('timeout', error);
+    }
+    throw new DeepSeekRequestError('upstream', error);
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return res.json();
 }
 
-// ── Schemas ─────────────────────────────────────────────────────────────────
 const YaoCiSchema = z.object({
   position: z.number().int().min(1).max(6),
   text: z.string(),
@@ -103,27 +164,17 @@ const LINE_POSITION_LABELS = ['初', '二', '三', '四', '五', '上'];
 
 function buildPrompt(input: z.infer<typeof GenerateInputSchema>): string {
   const movingDesc = input.movingLines.length > 0
-    ? `动爻：${input.movingLines.map(p => LINE_POSITION_LABELS[p-1] + '爻').join('、')}`
+    ? `动爻：${input.movingLines.map(position => LINE_POSITION_LABELS[position - 1] + '爻').join('、')}`
     : '无动爻（纯卦）';
-
   const changedDesc = input.changedName
     ? `变卦：${input.changedName}（${input.changedKey}）`
     : '无变卦';
-
   const yaoCiText = input.yaoCi.length > 0
-    ? input.yaoCi.map(y => `${LINE_POSITION_LABELS[y.position-1]}爻：${y.text}`).join('\n')
+    ? input.yaoCi.map(yao => `${LINE_POSITION_LABELS[yao.position - 1]}爻：${yao.text}`).join('\n')
     : '（无动爻）';
-
-  // 构建经文原文区块（若字段为空则标注"缺失"）
-  const guaCiBlock = input.guaCi.trim()
-    ? `卦辞：${input.guaCi}`
-    : '卦辞：（缺失）';
-  const xiangYueBlock = input.xiangYue.trim()
-    ? `象曰：${input.xiangYue}`
-    : '象曰：（缺失）';
-  const yaoCiBlock = input.yaoCi.length > 0
-    ? `动爻爻辞：\n${yaoCiText}`
-    : '';
+  const guaCiBlock = input.guaCi.trim() ? `卦辞：${input.guaCi}` : '卦辞：（缺失）';
+  const xiangYueBlock = input.xiangYue.trim() ? `象曰：${input.xiangYue}` : '象曰：（缺失）';
+  const yaoCiBlock = input.yaoCi.length > 0 ? `动爻爻辞：\n${yaoCiText}` : '';
 
   return `你是一位精通《周易》六爻占卜的易学大师，请为以下占卜结果提供专业解读。
 
@@ -160,21 +211,31 @@ ${yaoCiBlock}
 【通用要求】
 1. 语言：文白相间，既有古典韵味又通俗易懂
 2. 态度：客观中立，不做绝对预测，引导积极思考
-3. 【重要】经文引用规则：只能引用【经文原文】区块中提供的原句，不得自行补充、杜撰或引用未出现在输入中的经文。若某字段标注"（缺失）"，则在对应位置直接留空，不得替换为其他经文
-4. 严格返回合法 JSON，不要有额外文字，JSON 值中的换行用 \n 表示`;
+3. 【重要】经文引用规则：只能引用【经文原文】区块中提供的原句，不得自行补充、杜撰或引用未出现在输入中的经文。若某字段标注“（缺失）”，则在对应位置直接留空，不得替换为其他经文
+4. 严格返回合法 JSON，不要有额外文字，JSON 值中的换行用 \\n 表示`;
 }
 
-// ── Router ───────────────────────────────────────────────────────────────────
+function getDeepSeekError(error: unknown): TRPCError {
+  if (error instanceof TRPCError) return error;
+  if (error instanceof DeepSeekRequestError && error.kind === 'timeout') {
+    return new TRPCError({ code: 'TIMEOUT', message: '解读生成超时，请稍后重试。' });
+  }
+  return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: '解读生成失败，请稍后重试。' });
+}
+
 export const readingRouter = router({
   generate: publicProcedure
     .input(GenerateInputSchema)
     .mutation(async ({ input, ctx }) => {
-      // ── IP 限流检查 ───────────────────────────────────────────────────────
-      const clientIp =
-        (ctx.req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-        ctx.req.socket?.remoteAddress ||
-        'unknown';
+      // 未配置服务时不消耗 IP 当日额度。
+      if (!ENV.deepseekApiKey) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: '解读服务尚未配置，请稍后再试。',
+        });
+      }
 
+      const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
       const rateCheck = await checkAndIncrementIpLimit(clientIp);
       if (!rateCheck.allowed) {
         throw new TRPCError({
@@ -183,119 +244,88 @@ export const readingRouter = router({
         });
       }
 
-      // ── 调用 LLM 生成解读 ─────────────────────────────────────────────────
-      const prompt = buildPrompt(input);
-
-      let integratedReading = '';
-      let hexagramReading = '';
-
+      let generated;
       try {
-        const response = await callDeepSeek(
-          [
-            {
-              role: 'system',
-              content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。'
-            },
-            { role: 'user', content: prompt }
-          ],
+        generated = await callDeepSeek([
           {
-            type: 'json_object',
-          }
-        );
-
-        const content = response.choices?.[0]?.message?.content as string | undefined;
-        if (content) {
-          const parsed = JSON.parse(content);
-          integratedReading = parsed.integrated_reading ?? '';
-          hexagramReading = parsed.hexagram_reading ?? '';
-        }
-      } catch (e) {
-        console.error('[Reading] LLM error:', e);
-        integratedReading = '解读生成失败，请稍后重试。';
-        hexagramReading = '解读生成失败，请稍后重试。';
+            role: 'system',
+            content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
+          },
+          { role: 'user', content: buildPrompt(input) },
+        ]);
+      } catch (error) {
+        throw getDeepSeekError(error);
       }
 
-      // ── 保存到数据库 ──────────────────────────────────────────────────────
+      // 当前阶段的历史仅保存在浏览器。保留已登录用户写库能力，供未来 OAuth 版本复用；
+      // 匿名请求绝不向 readings 表写入问题或解读内容。
       let readingId: number | null = null;
-      try {
-        const db = await getDb();
-        if (db) {
-          const userId = (ctx.user as any)?.id ?? null;
-          const [result] = await db.insert(readings).values({
-            userId,
-            question: input.question,
-            linesJson: input.linesJson,
-            originalKey: input.originalKey,
-            originalName: input.originalName,
-            originalBits: input.originalBits,
-            changedKey: input.changedKey ?? null,
-            changedName: input.changedName ?? null,
-            changedBits: input.changedBits ?? null,
-            movingLinesJson: JSON.stringify(input.movingLines),
-            integratedReading,
-            hexagramReading,
-          });
-          readingId = (result as any)?.insertId ?? null;
+      if (ctx.user) {
+        try {
+          const db = await getDb();
+          if (db) {
+            const [result] = await db.insert(readings).values({
+              userId: ctx.user.id,
+              question: input.question,
+              linesJson: input.linesJson,
+              originalKey: input.originalKey,
+              originalName: input.originalName,
+              originalBits: input.originalBits,
+              changedKey: input.changedKey,
+              changedName: input.changedName,
+              changedBits: input.changedBits,
+              movingLinesJson: JSON.stringify(input.movingLines),
+              integratedReading: generated.integrated_reading,
+              hexagramReading: generated.hexagram_reading,
+            });
+            readingId = (result as { insertId?: number }).insertId ?? null;
+          }
+        } catch (error) {
+          console.error('[Reading] Authenticated history save failed:', error instanceof Error ? error.message : error);
         }
-      } catch (e) {
-        console.error('[Reading] DB save error:', e);
       }
 
       return {
-        integratedReading,
-        hexagramReading,
+        integratedReading: generated.integrated_reading,
+        hexagramReading: generated.hexagram_reading,
         readingId,
+        remaining: rateCheck.remaining,
       };
     }),
 
-  // 获取历史记录列表（仅返回当前登录用户自己的记录）
+  // 作为未来 OAuth 版本的可选接口保留；匿名版本的前端不会调用它。
   list: publicProcedure
     .input(z.object({ limit: z.number().int().min(1).max(50).default(20) }))
     .query(async ({ input, ctx }) => {
+      if (!ctx.user) return [];
       const db = await getDb();
       if (!db) return [];
-
-      const userId = (ctx.user as any)?.id ?? null;
-      // 未登录用户无法查看历史记录（历史记录需要登录才能关联）
-      if (!userId) return [];
-
-      const rows = await db
+      return db
         .select()
         .from(readings)
-        .where(eq(readings.userId, userId))
+        .where(eq(readings.userId, ctx.user.id))
         .orderBy(desc(readings.createdAt))
         .limit(input.limit);
-      return rows;
     }),
 
-  // 获取单条记录（严格校验归属，只能查看自己的记录）
   getById: publicProcedure
     .input(z.object({ id: z.number().int() }))
     .query(async ({ input, ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: '无权访问此记录' });
+      }
       const db = await getDb();
       if (!db) return null;
-
-      const userId = (ctx.user as any)?.id ?? null;
-
       const rows = await db
         .select()
         .from(readings)
         .where(eq(readings.id, input.id))
         .limit(1);
-
       const row = rows[0] ?? null;
       if (!row) return null;
-
-      // 严格校验：记录必须属于当前用户
-      // 未登录用户（userId=null）只能访问 userId 为 null 的记录
-      // 已登录用户只能访问自己的记录
-      if (row.userId !== userId) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: '无权访问此记录',
-        });
+      if (row.userId !== ctx.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: '无权访问此记录' });
       }
-
       return row;
     }),
 });

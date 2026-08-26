@@ -14,6 +14,8 @@ export type CoinFace = 2 | 3; // 2=反面, 3=正面
 
 export interface CoinSceneProps {
   throwResults: CoinFace[] | null;
+  /** 0-1：按钮投掷使用默认中等力度，手势投掷由握拳时长决定。 */
+  power?: number;
   onAnimationComplete?: () => void;
   isThrowingRef?: React.MutableRefObject<boolean>;
 }
@@ -59,7 +61,7 @@ interface CoinState {
   phaseStart: number;
 }
 
-export default function CoinScene({ throwResults, onAnimationComplete }: CoinSceneProps) {
+export default function CoinScene({ throwResults, power = 0.5, onAnimationComplete }: CoinSceneProps) {
   const mountRef          = useRef<HTMLDivElement>(null);
   const sceneRef          = useRef<THREE.Scene | null>(null);
   const rendererRef       = useRef<THREE.WebGLRenderer | null>(null);
@@ -345,12 +347,18 @@ export default function CoinScene({ throwResults, onAnimationComplete }: CoinSce
       cs.mesh.position.set(COIN_X_POSITIONS[i], TABLE_Y, 0);
       cs.mesh.rotation.set(normalizedX, 0, 0);
       cs.targetRotX = targetX;
-      cs.peakY      = TABLE_Y + THROW_HEIGHT + (Math.random() * 0.6 - 0.3);
+      const normalizedPower = Math.max(0, Math.min(1, power));
+      const powerScale = 0.82 + normalizedPower * 0.48;
+      cs.peakY = TABLE_Y + THROW_HEIGHT * (0.78 + normalizedPower * 0.44) + (Math.random() * 0.6 - 0.3);
+      cs.spinSpeed = {
+        x: COIN_SPIN_OFFSETS[i].x * powerScale,
+        z: COIN_SPIN_OFFSETS[i].z * powerScale,
+      };
       cs.phase      = 'rise';
       cs.elapsed    = 0;
       cs.phaseStart = 0;
     });
-  }, [throwResults]);
+  }, [power, throwResults]);
 
   return (
     <div
