@@ -174,7 +174,7 @@
   transform-origin: left center;
 }
 
-/* 定制 Streamdown prose 样式 */
+/* 定制安全 Markdown 的 prose 样式 */
 .prose p {
   margin-bottom: 0.75em;
 }
@@ -272,8 +272,8 @@
   transform-origin: top center;
 }
 
-/* ─── Streamdown 内容区暖色覆盖（消除灰色背景）─────────────── */
-/* 覆盖 Streamdown 中 code/pre/blockquote 的灰色背景 */
+/* ─── 安全 Markdown 内容区暖色覆盖（消除灰色背景）────────── */
+/* 覆盖代码、预格式化与引用块的灰色背景 */
 .ancient-reading-content [data-streamdown="inline-code"],
 .ancient-reading-content code {
   background: rgba(255, 243, 210, 0.7) !important;

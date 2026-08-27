@@ -3,6 +3,7 @@
  * 包含：云纹/如意纹 SVG 背景、书卷卡片、印章按钮、分割线
  */
 import React from 'react';
+import { Link } from 'wouter';
 
 // ─── 字体栈常量 ───────────────────────────────────────────────
 // 主字体：Noto Serif SC（方正书宋风格，Google Fonts 免费）
@@ -246,12 +247,14 @@ export function QuestionBanner({ question }: { question: string }) {
 // ─── 底部免责声明 ──────────────────────────────────────────────
 export function Disclaimer() {
   return (
-    <p
-      className="text-center text-stone-400/55 text-[0.7rem] mt-4 tracking-[0.2em]"
-      style={{ fontFamily: FANG_SONG }}
-    >
-      本结果仅供文化研究与娱乐参考，请合理看待
-    </p>
+    <div className="mt-4 text-center text-stone-400/65 text-[0.7rem] leading-6" style={{ fontFamily: FANG_SONG }}>
+      <p className="tracking-[0.14em]">本结果仅供文化研究、一般信息与娱乐参考，请合理看待</p>
+      <p className="mt-1 tracking-[0.08em]">
+        <Link href="/privacy" className="underline underline-offset-4 hover:text-stone-600">隐私政策</Link>
+        <span className="mx-2">·</span>
+        <Link href="/disclaimer" className="underline underline-offset-4 hover:text-stone-600">免责声明</Link>
+      </p>
+    </div>
   );
 }
 

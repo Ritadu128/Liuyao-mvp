@@ -140,24 +140,31 @@ async function callDeepSeek(messages: { role: 'system' | 'user'; content: string
   }
 }
 
+const HexagramKeySchema = z.string().regex(/^\d{2}$/, '卦序格式无效');
+const HexagramBitsSchema = z.string().regex(/^[01]{6}$/, '卦象格式无效');
+const HexagramNameSchema = z.string().trim().min(1).max(24);
+
 const YaoCiSchema = z.object({
   position: z.number().int().min(1).max(6),
-  text: z.string(),
+  text: z.string().trim().max(1_000),
 });
 
 const GenerateInputSchema = z.object({
-  question: z.string().min(1).max(500),
-  originalKey: z.string(),
-  originalName: z.string(),
-  originalBits: z.string().length(6),
-  changedKey: z.string().nullable(),
-  changedName: z.string().nullable(),
-  changedBits: z.string().nullable(),
-  movingLines: z.array(z.number().int().min(1).max(6)),
-  guaCi: z.string(),
-  xiangYue: z.string(),
-  yaoCi: z.array(YaoCiSchema),
-  linesJson: z.string(),
+  question: z.string().trim().min(1).max(200),
+  originalKey: HexagramKeySchema,
+  originalName: HexagramNameSchema,
+  originalBits: HexagramBitsSchema,
+  changedKey: HexagramKeySchema.nullable(),
+  changedName: HexagramNameSchema.nullable(),
+  changedBits: HexagramBitsSchema.nullable(),
+  movingLines: z.array(z.number().int().min(1).max(6)).max(6).refine(
+    lines => new Set(lines).size === lines.length,
+    '动爻不能重复',
+  ),
+  guaCi: z.string().trim().max(2_000),
+  xiangYue: z.string().trim().max(2_000),
+  yaoCi: z.array(YaoCiSchema).max(6),
+  linesJson: z.string().max(128),
 });
 
 const LINE_POSITION_LABELS = ['初', '二', '三', '四', '五', '上'];
@@ -309,7 +316,7 @@ export const readingRouter = router({
     }),
 
   getById: publicProcedure
-    .input(z.object({ id: z.number().int() }))
+    .input(z.object({ id: z.number().int().min(1) }))
     .query(async ({ input, ctx }) => {
       if (!ctx.user) {
         throw new TRPCError({ code: 'FORBIDDEN', message: '无权访问此记录' });

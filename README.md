@@ -1,305 +1,339 @@
 # 六爻占卜 MVP
 
-一个匿名优先的中文六爻占卜 Web 应用。用户输入所问之事后，可通过三枚 3D 铜钱逐爻投掷、一键成卦，或使用摄像头手势完成投掷；应用依据六爻规则计算本卦、变卦与动爻，并在服务器端调用 DeepSeek 生成受控的文化解读。
+一个**匿名优先**的中文六爻占卜 Web 应用。用户输入所问之事后，可通过三枚 3D 铜钱逐爻投掷、一键成卦，或摄像头手势投掷；应用据六爻规则计算本卦、变卦与动爻，加载本地经文，并由服务器端 DeepSeek 调用生成两类文化解读。
 
-> **定位与边界**：本项目用于《周易》文化研究与娱乐体验，不提供医疗、法律、投资、税务或其他高风险决策建议。页面应始终展示“本结果仅供文化研究与娱乐参考，请合理看待”。
+> **使用边界：** 本项目及人工智能生成内容仅用于《周易》文化研究、一般信息与娱乐参考。它不构成医疗、投资、法律、税务或其他高风险决策建议。完整文本见网页中的[免责声明](/disclaimer)。
 
 ## 目录
 
-- [核心能力与用户流程](#核心能力与用户流程)
-- [系统架构](#系统架构)
-- [完整目录结构](#完整目录结构)
-- [技术栈](#技术栈)
-- [本地安装与启动](#本地安装与启动)
+- [版本边界与当前状态](#版本边界与当前状态)
+- [核心功能与用户流程](#核心功能与用户流程)
+- [系统架构与实际数据流](#系统架构与实际数据流)
+- [目录结构与技术栈](#目录结构与技术栈)
+- [本地安装、MySQL 与启动](#本地安装mysql-与启动)
 - [环境变量](#环境变量)
-- [MySQL 初始化与迁移](#mysql-初始化与迁移)
-- [DeepSeek 服务端解读流程](#deepseek-服务端解读流程)
+- [DeepSeek 服务端解读](#deepseek-服务端解读)
 - [匿名历史与 IP 限额](#匿名历史与-ip-限额)
 - [摄像头与手势投掷](#摄像头与手势投掷)
+- [两类解读的长图导出](#两类解读的长图导出)
+- [随喜支持作者](#随喜支持作者)
+- [隐私政策与免责声明](#隐私政策与免责声明)
+- [安全审计与加固](#安全审计与加固)
 - [测试、构建与部署](#测试构建与部署)
-- [安全与隐私](#安全与隐私)
-- [当前状态、已知问题与重建说明](#当前状态已知问题与重建说明)
+- [素材、验收与待确认事项](#素材验收与待确认事项)
 
-## 核心能力与用户流程
+## 版本边界与当前状态
 
-应用的主流程为：**输入问题 → 投掷六爻 → 计算卦象 → 加载经文 → 服务端生成解读 → 保存本机历史**。六爻计算完全在前端通过纯函数完成：每次投掷三枚硬币，正面计 3、反面计 2；6 为老阴动爻、7 为少阳、8 为少阴、9 为老阳动爻。六条爻按自下而上的顺序形成 6 位二进制本卦；仅翻转动爻以形成变卦。
+当前 GitHub 仓库只能追溯至 **2026-03-03**。其后的任务、聊天记录、版本与部署信息均无法从仓库恢复。因此，下面将“原仓库可确认内容”“本次重建内容”“后续回忆补充的需求”明确分开；不应把 3 月 3 日的仓库误作最终版本。
 
-| 能力 | 当前行为 |
-|---|---|
-| 提问与成卦 | 提问页校验输入后进入投掷页；支持逐爻投掷与一键成卦。 |
-| 3D 铜钱 | Three.js 渲染三枚乾隆通宝，展示上抛、翻转、落地与停稳动画。 |
-| 手势投掷 | MediaPipe 识别握拳/张掌；稳定握拳后按时长蓄力，稳定张掌后释放投掷。 |
-| 经文数据 | `client/public/data` 内含 64 卦映射表与 64 份经文 JSON。 |
-| AI 解读 | 后端将问题、卦名、动爻与经文原文发送至 DeepSeek，并要求返回结构化 JSON。 |
-| 匿名历史 | 成功解读后保存到浏览器 `localStorage`；刷新和重新打开浏览器后仍可查看。 |
-| 服务端限流 | 后端 MySQL 以 IP 与 UTC 日期为维度，限制每 IP 每日最多 10 次 DeepSeek 解读请求。 |
+| 来源 | 内容 | 当前状态 |
+|---|---|---|
+| 原仓库可确认 | React/tRPC/Drizzle 架构、六爻计算、64 卦静态经文、Three.js 硬币、MediaPipe 手势基础、结果页两类解读。 | 已保留并在当前基线上修复。 |
+| 本次重建第一阶段 | 可安装/启动/构建/测试、同域 Express、MySQL 迁移、匿名 localStorage 历史、后端每日 IP 限额、DeepSeek 安全调用、手势状态机。 | 已实现；真实 DeepSeek 和真实摄像头真机验收待完成。 |
+| 本轮补充需求 | 两类解读分别导出长图、原生分享/PNG 下载降级、随喜占位、隐私/免责声明网页、安全审计与整改。 | 已实现代码与测试；真实 AI 内容下的端到端导出、移动分享和真机摄像头仍需验收。 |
 
-## 系统架构
+## 核心功能与用户流程
 
-前端和后端通过同一 Express 服务部署。开发环境由 Express 挂载 Vite 中间件；生产环境由 Express 同域提供 Vite 构建产物与 `/api/trpc` 接口。因此不需要额外配置跨域、跨域 Cookie 或前端 API 基址。摄像头在生产环境必须由 HTTPS 页面调用；`localhost` 是浏览器允许摄像头访问的本地开发例外。
+主流程为：**输入问题 → 投掷六爻 → 计算卦象 → 加载经文 → 服务端生成两类解读 → 保存匿名历史 → 分别导出或分享解读长图**。每次投掷三枚硬币，正面计 3、反面计 2；6 为老阴动爻、7 为少阳、8 为少阴、9 为老阳动爻。六条爻按自下而上的顺序形成 6 位二进制本卦，仅翻转动爻形成变卦。
+
+| 能力 | 当前实现 | 验收状态 |
+|---|---|---|
+| 提问与成卦 | 提问页、逐爻投掷与一键成卦。 | 已在本地浏览器验证。 |
+| 3D 铜钱 | Three.js 渲染上抛、翻转、落地；手势蓄力影响动画视觉力度，不改变随机结果。 | 已构建验证。 |
+| 手势投掷 | MediaPipe 识别握拳/张掌，含稳定时间、置信度、冷却和权限错误提示。 | 无摄像头错误路径已验证；HTTPS 真机待验收。 |
+| 经文 | `client/public/data` 内的 64 卦映射及经文 JSON。 | 已纳入主流程。 |
+| 两类 AI 解读 | **综合解读**与**卦象解读**分别由服务器返回结构化字段。 | 无 Key 的受控降级已验证；真实成功响应待新 Key。 |
+| 匿名历史 | 浏览器 localStorage，刷新或重新打开同一浏览器后可见，最多 30 条。 | 已实现。 |
+| 长图导出 | 每个解读页签独立导出问题、卦象、卦名、动爻、相关经文、解读及简短提示。 | 代码、缩放单元测试和构建已通过；真实长内容/手机分享待验收。 |
+| 随喜 | 两个解读模块底部均有微信、支付宝和 Ko-fi 的明确占位。 | 布局已实现，等待作者素材。 |
+| 法律页面 | `/privacy` 与 `/disclaimer`，全站免责声明组件提供入口。 | 已实现。 |
+
+## 系统架构与实际数据流
+
+前端和 API 由**同一 Express 服务、同一域名**提供。开发环境为 Express 挂载 Vite 中间件；生产环境为 Express 提供 Vite 构建产物和 `/api/trpc`。这避免了额外的跨域、跨站 Cookie 与摄像头权限复杂度。生产摄像头必须在 HTTPS 安全上下文中使用；浏览器通常将 `localhost` 视作本地开发例外。[1]
 
 ```mermaid
 flowchart TB
-  U[匿名用户浏览器] -->|HTTPS / localhost| N[Express + Vite / 静态站点]
-  N --> FE[React 前端]
-  FE -->|同域 /api/trpc| RPC[tRPC reading.generate]
+  U[匿名用户浏览器] -->|HTTPS / localhost| N[同域 Express 服务]
+  N --> FE[React / Vite 前端]
+  FE -->|同域 JSON tRPC| RPC[reading.generate]
   RPC -->|原子计数| DB[(MySQL ipRateLimits)]
-  RPC -->|服务器端 HTTPS 请求| DS[DeepSeek API]
-  FE -->|仅本机| LS[(localStorage 历史记录)]
-  FE -->|浏览器摄像头权限| MP[MediaPipe 手势识别]
+  RPC -->|服务器端 HTTPS| DS[DeepSeek API]
+  FE -->|本机 localStorage| LS[(匿名历史)]
+  FE -->|用户主动授权| CAM[本地摄像头]
+  CAM --> MP[浏览器端 MediaPipe 手势识别]
+  FE -->|用户选择导出| IMG[原生分享或本地 PNG]
 ```
 
-### 请求边界
+### 数据与能力边界
 
-| 数据或能力 | 所在位置 | 说明 |
+| 数据或能力 | 位置 | 实际行为 |
 |---|---|---|
-| 六爻随机投掷、卦象计算、经文读取 | 浏览器 | 不依赖模型；经文来自打包的静态 JSON。 |
-| DeepSeek API Key | 服务器环境变量 | 只使用 `DEEPSEEK_API_KEY`；绝不使用 `VITE_*` 前缀，绝不进入浏览器包。 |
-| DeepSeek API 请求 | `server/routers/reading.ts` | 仅后端发起，含 3–60 秒超时钳制、上游错误与响应结构校验。 |
-| 每日 IP 限额 | MySQL | `(ip, date)` 唯一索引和原子 UPSERT 强制执行，不依赖前端。 |
-| 匿名占卜历史 | 浏览器 `localStorage` | 当前阶段不向服务器保存匿名问题或解读内容。 |
-| OAuth | 模板保留能力 | 未配置 OAuth 环境变量时自动禁用，不阻塞匿名版本。 |
+| 六爻随机投掷、卦象计算、静态经文读取 | 浏览器 | 不依赖模型；经文来自打包的 JSON。 |
+| 问题、卦象与经文 | 浏览器 → 本项目服务器 → DeepSeek | 仅在用户请求 AI 解读时发送；请勿输入不必要的敏感个人信息。 |
+| DeepSeek API Key | 服务器 Secret / `.env` | 只读取 `DEEPSEEK_API_KEY`；绝不使用 `VITE_*`，绝不发送到浏览器。 |
+| 匿名历史 | 浏览器 localStorage | 键名 `liuyao_local_history`；当前匿名流程不写入服务器 `readings`。 |
+| 每日次数 | MySQL | 保存 IP、UTC 日期和计数，仅用于服务端十次/日限额。 |
+| 摄像头画面 | 设备本地浏览器 | 仅在用户启动并授权时用于 MediaPipe；当前代码不把视频帧上传到本项目服务器或 DeepSeek。 |
+| 公开联系/Ko-fi | 构建时公开变量 | `VITE_CONTACT_EMAIL` 和 `VITE_KOFI_URL` 会打包进前端，**不得放任何秘密**。 |
+| OAuth | 可选遗留能力 | 环境变量未齐全时不注册 OAuth 路由，匿名版不依赖 Cookie。 |
 
-## 完整目录结构
+## 目录结构与技术栈
 
 ```text
 Liuyao-mvp/
 ├── client/
-│   ├── index.html                     # HTML 入口、中文元信息与字体
+│   ├── index.html                         # HTML、字体与元信息
 │   ├── public/
-│   │   ├── assets/                    # 铜钱贴图
-│   │   └── data/
-│   │       ├── hexagrams_map.json     # 64 卦二进制映射
-│   │       └── texts/01..64.json      # 64 卦经文数据
+│   │   ├── assets/                        # 铜钱贴图
+│   │   └── data/                          # 64 卦映射和经文 JSON
 │   └── src/
-│       ├── App.tsx                    # 路由、全局 Provider
+│       ├── App.tsx                        # 页面路由
 │       ├── components/
-│       │   ├── CoinScene.tsx          # Three.js 3D 铜钱动画
-│       │   ├── GestureThrowPanel.tsx  # 摄像头、识别状态与蓄力 UI
-│       │   ├── HexagramLine.tsx       # 卦象线条展示
-│       │   ├── ScrollUI.tsx           # 书卷风格公共组件
-│       │   └── ui/                    # shadcn/Radix 基础组件
-│       ├── contexts/DivinationContext.tsx
-│       ├── hooks/
-│       │   ├── useGestureThrow.ts     # MediaPipe 手势状态机
-│       │   ├── useHexagramData.ts     # 静态卦象与经文加载
-│       │   └── useLocalHistory.ts     # 匿名本地历史
+│       │   ├── CoinScene.tsx              # Three.js 硬币动画
+│       │   ├── GestureThrowPanel.tsx      # 摄像头/手势状态 UI
+│       │   ├── ReadingExport.tsx          # 长图生成、分享和下载降级
+│       │   ├── SafeMarkdown.tsx           # 禁用原始 HTML 的模型输出渲染
+│       │   ├── SupportAuthor.tsx          # 随喜资源占位
+│       │   └── ScrollUI.tsx               # 书卷组件、政策入口
+│       ├── hooks/                         # 手势、经文与 localStorage 历史
 │       ├── lib/
-│       │   ├── liuyao.ts              # 六爻纯函数计算引擎
-│       │   └── trpc.ts                # 类型化 tRPC 客户端
-│       ├── pages/
-│       │   ├── QuestionPage.tsx       # 提问页
-│       │   ├── ThrowPage.tsx          # 投掷页
-│       │   ├── ResultPage.tsx         # 结果与 AI 解读页
-│       │   └── HistoryPage.tsx        # 匿名本地历史页
-│       └── index.css                  # 全局宣纸主题与样式
-├── drizzle/
-│   ├── schema.ts                      # MySQL 表定义
-│   ├── 0000_*.sql .. 0003_*.sql       # 已提交的迁移
-│   └── meta/                          # Drizzle 迁移日志与快照
+│       │   ├── exportImage.ts             # 长图画布缩放保护
+│       │   ├── liuyao.ts                  # 六爻纯函数
+│       │   └── publicConfig.ts            # 联系/Ko-fi 公开配置
+│       └── pages/
+│           ├── ResultPage.tsx             # 两类解读、导出、随喜
+│           ├── LegalPages.tsx             # 隐私政策与免责声明
+│           └── Question/Throw/History...  # 主流程页面
+├── drizzle/                               # schema、SQL 迁移与元数据
 ├── server/
-│   ├── _core/                         # Express、tRPC、Vite、可选 OAuth 基础设施
-│   ├── routers/reading.ts             # AI 解读、限流与可选登录历史接口
-│   ├── db.ts                          # Drizzle 数据库入口
-│   ├── routers.ts                     # 根 tRPC Router
-│   └── *.test.ts                      # Vitest 服务端与领域测试
-├── shared/                            # 前后端共享常量、类型与错误定义
-├── .env.example                       # 安全的环境变量示例
-├── drizzle.config.ts                  # Drizzle Kit 配置
-├── vite.config.ts                     # Vite 客户端构建配置
-├── vitest.config.ts                   # 服务端测试配置
-├── package.json                       # 脚本和依赖
-└── REBUILD_BROWSER_NOTES.md           # 本次重建过程的浏览器验证记录
+│   ├── _core/security.ts                  # 安全响应头、JSON 与同源写保护
+│   ├── _core/index.ts                     # Express 启动入口
+│   ├── routers/reading.ts                 # 限流与 DeepSeek 调用
+│   ├── db.ts                              # Drizzle/MySQL 入口
+│   └── *.test.ts                          # 单元与安全回归测试
+├── .env.example                           # 不含任何真实密钥的变量模板
+├── drizzle.config.ts                      # Drizzle Kit 配置
+├── pnpm-workspace.yaml                    # 版本化安全依赖覆盖
+├── SECURITY.md                            # 可追踪安全审计与整改记录
+├── vite.config.ts / vitest.config.ts      # 构建与测试配置
+└── REBUILD_BROWSER_NOTES.md               # 第一阶段浏览器验证记录
 ```
 
-## 技术栈
-
-| 层次 | 主要技术 |
+| 层次 | 技术 |
 |---|---|
-| 前端 | React 19、TypeScript、Vite 7、Tailwind CSS 4、Wouter、TanStack Query、tRPC React |
-| 视觉与交互 | Three.js、Framer Motion、Radix UI、Noto Serif SC |
-| 手势识别 | `@mediapipe/tasks-vision` GestureRecognizer（GPU 优先、CPU 回退） |
-| 后端 | Node.js、Express 4、tRPC 11、Zod、SuperJSON |
-| 数据库 | MySQL 8、Drizzle ORM、Drizzle Kit |
-| AI | DeepSeek Chat Completions API，模型默认 `deepseek-chat` |
-| 测试与构建 | Vitest、TypeScript、Vite、esbuild、pnpm |
+| 前端 | React 19、TypeScript、Vite 7、Tailwind CSS 4、Wouter、TanStack Query、tRPC React。 |
+| 视觉与交互 | Three.js、Framer Motion、Radix UI、Noto Serif SC。 |
+| 手势 | `@mediapipe/tasks-vision` GestureRecognizer，GPU 优先、CPU 回退。 |
+| 长图与解读渲染 | `html-to-image`、Web Share API、`react-markdown`、`remark-gfm`。 |
+| 后端 | Node.js 22、Express 5、tRPC 11、Zod、SuperJSON。 |
+| 数据库 | MySQL 8、Drizzle ORM、Drizzle Kit。 |
+| AI | DeepSeek Chat Completions API，默认 `deepseek-chat`。 |
+| 测试与构建 | Vitest、TypeScript、Vite、esbuild、pnpm。 |
 
-## 本地安装与启动
+## 本地安装、MySQL 与启动
 
 ### 前置条件
 
-请安装 Node.js 22+、pnpm 10+ 和 MySQL 8+。本地手势识别可在 `http://localhost` 下运行；真实线上摄像头功能必须运行在 HTTPS 域名下。
+请安装 Node.js 22+、pnpm 10+ 和 MySQL 8+。线上摄像头功能必须使用 HTTPS；本地开发可访问 `http://localhost:3000`。[1]
 
 ```bash
 git clone https://github.com/Ritadu128/Liuyao-mvp.git
 cd Liuyao-mvp
-pnpm install
+pnpm install --frozen-lockfile
 cp .env.example .env
 ```
 
-编辑 `.env`，至少配置 `DATABASE_URL`。要获得真实 AI 解读，还必须填写 `DEEPSEEK_API_KEY`。`.env` 已被 `.gitignore` 忽略，不能提交。
+编辑被 Git 忽略的 `.env`，至少配置 `DATABASE_URL`。需要真实 AI 解读时，再填入 `DEEPSEEK_API_KEY`。不要将 `.env`、生产配置截图或真实 Key 提交到 Git。
 
 ```bash
-# 开发模式：同一端口同时提供前端和 API
+# 开发：同一端口提供前端和 API
 pnpm dev
+# 浏览器： http://localhost:3000
 
-# 浏览器访问
-# http://localhost:3000
+# 生产构建和启动
+pnpm build
+NODE_ENV=production PORT=3000 pnpm start
 ```
 
-## 环境变量
+### MySQL 初始化与迁移
 
-请从 `.env.example` 复制模板；示例文件只含变量名与占位符，不能放入真实密钥。
-
-| 变量 | 是否必需 | 用途 |
-|---|---|---|
-| `NODE_ENV` | 否 | `development` 或 `production`。 |
-| `PORT` | 否 | Express 端口，默认 `3000`。 |
-| `DATABASE_URL` | 是 | MySQL URL；限流依赖它，格式为 `mysql://user:password@host:3306/database`。 |
-| `DEEPSEEK_API_KEY` | 真实解读必需 | 仅服务器读取的 DeepSeek Key。不可提交、不可使用 `VITE_` 前缀。 |
-| `DEEPSEEK_MODEL` | 否 | 默认 `deepseek-chat`。 |
-| `DEEPSEEK_TIMEOUT_MS` | 否 | DeepSeek 请求超时，服务端会钳制到 3000–60000ms，默认 20000ms。 |
-| `TRUST_PROXY` | 生产反向代理时必需 | 仅当 Node 位于可信反向代理之后设为 `true`，以便 `req.ip` 读取真实来源。 |
-| `JWT_SECRET`、`VITE_APP_ID`、`OAUTH_SERVER_URL` 等 | 否 | 预留给未来 OAuth；匿名版本无需设置。 |
-
-## MySQL 初始化与迁移
-
-本项目当前数据库用于两类内容：**服务器端 IP 限流**与未来可选的登录用户记录。匿名历史不会写入 `readings` 表。
-
-### 创建数据库与本地应用账户
-
-以下为本地开发示例。请把密码替换为强随机值，并把同一个密码写入 `.env` 的 `DATABASE_URL`。
+匿名版数据库用于服务器端 IP 限流，也为未来可选 OAuth 历史预留表。匿名问题和解读不会写入 `readings`。
 
 ```sql
+-- 本地开发示例：用强密码替换占位符
 CREATE DATABASE liuyao_mvp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'liuyao_app'@'127.0.0.1' IDENTIFIED BY 'replace-with-strong-password';
-GRANT ALL PRIVILEGES ON liuyao_mvp.* TO 'liuyao_app'@'127.0.0.1';
+CREATE USER 'liuyao_app'@'127.0.0.1' IDENTIFIED BY 'replace-with-a-strong-password';
+
+-- 运行时最小权限：不授予 DDL 或全局权限
+GRANT SELECT, INSERT, UPDATE ON liuyao_mvp.* TO 'liuyao_app'@'127.0.0.1';
 FLUSH PRIVILEGES;
 ```
 
-### 执行迁移
+迁移应由单独的受控运维账户或 CI/CD 步骤执行；生产应用账户不应拥有建表、删表或超级权限。
 
 ```bash
-# 根据已提交迁移创建/升级表
+# 执行已提交 SQL 迁移
 pnpm db:migrate
 
-# 修改 drizzle/schema.ts 后生成新的迁移
+# 修改 drizzle/schema.ts 后生成迁移
 pnpm db:generate
 
-# 生成并立即执行迁移（本地开发便捷命令）
+# 仅本地开发：生成后立即迁移
 pnpm db:push
 ```
 
-`ipRateLimits` 表包含 `(ip, date)` 唯一索引 `ip_rate_limits_ip_date_unique`。不要手动删除该索引，否则高并发下同一 IP 的计数可能失准。
+`ipRateLimits` 的 `(ip, date)` 唯一索引 `ip_rate_limits_ip_date_unique` 不可删除，否则并发下的限额正确性会受影响。
 
-## DeepSeek 服务端解读流程
+## 环境变量
 
-1. 结果页从静态经文数据中收集问题、本卦、变卦、动爻、卦辞、象曰和动爻爻辞。
-2. 前端使用同域 tRPC 调用 `reading.generate`；浏览器从不携带 DeepSeek Key。
-3. 服务器先校验 `DEEPSEEK_API_KEY`，未配置时返回受控提示且不扣限额。
-4. 服务器以 IP/日期进行原子限流；达到十次后返回 `TOO_MANY_REQUESTS`。
-5. 服务器请求 `https://api.deepseek.com/chat/completions`，附加 AbortController 超时控制。
-6. 服务端验证上游 HTTP 状态、外层 `choices` 结构、JSON 文本和两项必需的解读字段。
-7. 仅在验证成功后向浏览器返回 `integratedReading` 与 `hexagramReading`。
+以 `.env.example` 为模板。示例仅含变量名称或空占位符；真实 Key、密码和 Token 不能进入 README、Git 或任何 `VITE_*` 变量。
 
-提示词明确限制模型：只能引用本次输入的经文原文，不得自行补充或杜撰经文；输出应保持客观中立，不作绝对预测。
+| 变量 | 是否必需 | 说明 |
+|---|---|---|
+| `NODE_ENV` | 否 | `development` 或 `production`。 |
+| `PORT` | 否 | Express 端口，默认 `3000`。 |
+| `DATABASE_URL` | 是 | MySQL URL；后端限流依赖它。 |
+| `DEEPSEEK_API_KEY` | 真实解读必需 | 仅服务器读取；当前项目等待新的有效 Key。 |
+| `DEEPSEEK_MODEL` | 否 | 默认 `deepseek-chat`。 |
+| `DEEPSEEK_TIMEOUT_MS` | 否 | 服务器钳制到 3000–60000ms，默认 20000ms。 |
+| `TRUST_PROXY` | 可信反向代理时必需 | 只有 Node 位于可信代理后时设 `true`。 |
+| `VITE_CONTACT_EMAIL` | 上线前建议配置 | 公开展示的项目联系邮箱；为空时显示“待提供正式联系邮箱”。 |
+| `VITE_KOFI_URL` | 获得作者链接后配置 | 仅接受 `https://` URL；为空时显示明确占位。 |
+| `JWT_SECRET`、`VITE_APP_ID`、`OAUTH_SERVER_URL` 等 | 否 | 未来 OAuth 预留；匿名版不需要。 |
+
+## DeepSeek 服务端解读
+
+当前已完成**可配置且安全的接入代码**，但因没有有效 `DEEPSEEK_API_KEY`，尚未验证真实成功响应。无 Key 时 API 返回受控“解读服务尚未配置”提示，且不会消耗 IP 限额。
+
+1. 结果页收集问题、本卦、变卦、动爻、卦辞、象曰和动爻爻辞。
+2. 浏览器同域调用 `reading.generate`，不会携带 DeepSeek Key。
+3. 服务器先校验 Zod 输入和 Key；再对 IP/UTC 日期执行原子限流。
+4. 服务器通过固定 HTTPS 地址 `https://api.deepseek.com/chat/completions` 请求 DeepSeek，并设置 AbortController 超时。
+5. 服务器校验上游 HTTP 状态、`choices` 结构、JSON 文本与两项解读字段；仅验证通过后返回。
+6. 浏览器将成功结果保存到 localStorage，并以安全 Markdown 渲染；原始 HTML 不会作为 DOM 执行。
+
+提示词约束模型只能引用本次传入的经文原文，并保持客观中立，不作绝对预测。Key 准备好后，请仅写入服务器 `.env` 或部署平台 Secret，然后执行一次最小真实请求进行验收。
 
 ## 匿名历史与 IP 限额
 
-### 匿名历史
+匿名历史位于 `localStorage` 的 `liuyao_local_history`，最多保存 30 条，包括问题、六爻、本卦/变卦、动爻、两类解读与创建时间。清除浏览器站点数据、无痕窗口、换浏览器或换设备后，历史可能丢失，当前没有跨设备同步。
 
-匿名历史由 `client/src/hooks/useLocalHistory.ts` 管理，保存在浏览器 `localStorage` 的 `liuyao_local_history` 键中。成功解读会保存问题、六爻、本卦/变卦、动爻、两类解读和时间；最新记录在前，最多保留 30 条。用户清除浏览器站点数据或换用浏览器/设备后，历史不会自动迁移。
-
-### 每日 IP 限额
-
-限额必须由后端执行。`reading.generate` 会在调用 DeepSeek 前，以 UTC 日期和请求来源 IP 对 MySQL 表 `ipRateLimits` 执行原子 UPSERT。前十次请求递增；第十一次不会递增并返回“今日占卜次数已达上限”。数据库不可用时接口会失败关闭，避免因故障绕过限额。
+每次实际 DeepSeek 解读前，后端会以请求 IP 与 UTC 日期对 MySQL `ipRateLimits` 执行原子 UPSERT。每 IP 每日最多 10 次；第 11 次不递增并返回 `TOO_MANY_REQUESTS`。数据库不可用时接口失败关闭，不会绕过限额。`TRUST_PROXY` 默认为 `false`，仅在可信代理部署中启用，以避免伪造转发头影响 `req.ip`。
 
 ## 摄像头与手势投掷
 
-### 前置条件
+用户必须主动点击“启动手势识别”并在浏览器中授权摄像头。权限被拒、没有摄像头、设备被占用、浏览器不支持或模型启动失败时，界面会显示中文原因。摄像头仅由浏览器端 MediaPipe GestureRecognizer 使用；停止识别或离开投掷页时会关闭媒体轨道。
 
-生产访问必须使用 HTTPS；浏览器通常只允许 HTTPS 页面或 `localhost` 调用 `getUserMedia`。用户首次点击“启动手势识别”时，浏览器会请求摄像头权限。若权限被拒绝、摄像头不存在、被其他程序占用或浏览器不支持，页面会显示明确中文错误。
-
-### 识别和投掷状态机
-
-| 阶段 | 判定 | 用户可见反馈 | 保护措施 |
+| 阶段 | 判定 | 用户反馈 | 保护 |
 |---|---|---|---|
-| 未启动 | 未取得摄像头流 | 摄像头预览占位和启动按钮 | 不预加载模型，减少首次页面开销。 |
-| 就绪 | 摄像头与模型可用 | 实时镜像画面、“请握拳蓄力” | 仅接受置信度不低于 0.65 的手势。 |
-| 蓄力 | `Closed_Fist` 稳定至少 200ms | 蓄力条从 0% 至 100% | 张掌必须在至少 300ms 蓄力后才可释放。 |
-| 释放 | `Open_Palm` 稳定至少 200ms | “已释放，正在投掷” | 触发原有单爻状态机，不直接绕开第六爻收尾逻辑。 |
-| 冷却 | 投掷触发后 | “投掷冷却中” | 两段 800ms 冷却、动画中禁用面板、六爻完成后禁用面板，防止连续误触发。 |
+| 未启动 | 未取得媒体流 | 摄像头预览占位和启动按钮 | 不预加载模型。 |
+| 就绪 | 摄像头与模型就绪 | 实时镜像画面、“请握拳蓄力” | 仅接受置信度 ≥ 0.65 的手势。 |
+| 蓄力 | `Closed_Fist` 稳定 ≥ 200ms | 0–100% 蓄力条 | 手势丢失或异常会取消蓄力。 |
+| 释放 | `Open_Palm` 稳定 ≥ 200ms 且蓄力 ≥ 300ms | “已释放，正在投掷” | 复用原有单爻状态机。 |
+| 冷却 | 手势触发后 | “投掷冷却中” | 两段 800ms 冷却、动画中锁定、六爻完成锁定。 |
 
-手势力度不会改变随机卦象结果，但会改变 3D 铜钱动画的上抛高度与翻转速度。握拳越久，动画视觉力度越强。
+> **真机验收：** 必须在 HTTPS 的手机及桌面浏览器上测试允许/拒绝权限、握拳—张掌、手势抖动、连续释放、摄像头占用、停止和路由离开。本环境没有可操作物理摄像头，因此不将此项标为已完成。
+
+## 两类解读的长图导出
+
+综合解读和卦象解读各有独立的“保存／分享长图”按钮。按钮只在本模块成功拿到解读内容后可用。
+
+导出目标包含问题、卦象、本卦/变卦名称、动爻、可用经文、当前页签对应解读和页面内的简短免责声明；导出按钮、随喜二维码/链接等操作控件会通过 `data-export-ignore` 排除。`html-to-image` 先等待字体与图片解码，然后生成纵向 PNG。
+
+| 场景 | 行为 |
+|---|---|
+| 支持文件分享的移动浏览器 | 用 Web Share API 交给系统分享面板；用户可选择微信等已安装应用或保存方式。 |
+| 不支持原生文件分享的浏览器 | 自动下载 PNG。 |
+| 用户取消系统分享 | 显示“已取消分享”，不误报失败。 |
+| 原生分享异常 | 自动降级为 PNG 下载。 |
+| 长内容/高分辨率 | 计算画布边长与总像素上限，自动降低清晰度而不裁切内容，避免常见 Canvas 内存/尺寸失败。 |
+| 字体或生成错误 | 显示生成中状态或具体失败提示，允许重新尝试。 |
+
+当前自动化测试覆盖普通手机宽度、高分辨率和极端超长内容的缩放边界。仍需在真实成功 AI 解读下，以手机小屏、高分辨率桌面和超长文本完成视觉导出及原生分享验收。
+
+## 随喜支持作者
+
+两个解读模块底部都显示“如果这个项目对你有帮助，欢迎随喜支持作者。完全自愿，不影响任何功能使用。”区域。当前微信与支付宝区域是明显的**待提供收款码**占位，Ko-fi 是**待提供链接**占位；不会生成或虚构任何收款码、账户或外部收款页。
+
+作者提供素材后：
+
+1. 将微信、支付宝二维码文件放入受版本控制的公开静态资源目录，并在 `SupportAuthor.tsx` 指向对应文件；只使用作者明确授权公开的二维码。
+2. 在部署环境或构建环境设置 `VITE_KOFI_URL=https://...`。组件仅为有效 HTTPS URL 输出 `target="_blank" rel="noopener noreferrer"` 安全外链。
+3. 通过桌面与手机测试二维码清晰度、触控区域、外链跳转和不遮挡解读文本。
+
+## 隐私政策与免责声明
+
+网页底部及结果附近都有政策入口：`/privacy` 为《隐私政策》，`/disclaimer` 为《免责声明》。政策以当前真实数据流为准，明确说明：问题/卦象/经文会在解读时传至服务器和 DeepSeek；匿名历史在 localStorage；服务器处理 IP 限额；摄像头在本地端处理；以及 Google Fonts、MediaPipe/jsDelivr、DeepSeek 和未来 Ko-fi 的第三方边界。
+
+正式部署前必须设置公开 `VITE_CONTACT_EMAIL`，并在隐私政策页面确认数据保留期限、删除请求处理渠道和当前服务商清单仍然准确。政策页面的“最后更新”日期当前为 2026-08-27；每次实质性数据流变更都应更新它。
+
+## 安全审计与加固
+
+完整、可追踪记录见 [SECURITY.md](./SECURITY.md)。本记录是项目维护者的代码与本地运行检查，**不是第三方安全认证或渗透测试报告**。
+
+| 分类 | 当前结论 |
+|---|---|
+| 已通过 | Key 仅服务端读取；匿名历史不写服务器；Drizzle 参数化访问；固定 DeepSeek URL；数据库限流原子性；匿名模式不使用 Cookie。 |
+| 已修复 | 安全响应头与 HSTS 条件、CSP、同源 JSON 写保护、请求体上限、畸形 JSON 处理、严格 Zod 输入、生产调试清理、安全 Markdown、未使用高风险依赖移除、Express/Axios/Drizzle/tRPC 升级。 |
+| 依赖审计 | 最终执行 `pnpm audit --prod --audit-level=low` 返回 **No known vulnerabilities found**。 |
+| 仍需处理 | 真实 DeepSeek 成功/失败响应验收、依赖最小化与代码分割、单 IP 限流对代理/NAT 的天然限制。 |
+| 需部署验证 | TLS/HSTS、可信代理 `TRUST_PROXY`、生产 CSP、未来 OAuth Cookie、MySQL 备份/恢复、HTTPS 真机摄像头生命周期。 |
+
+安全响应头参考 Express、OWASP 与 MDN 的生产建议。[2] [3] [4] CSP 是纵深防御，不替代输入校验和安全渲染。[5]
 
 ## 测试、构建与部署
 
 ### 本地验证命令
 
 ```bash
+# 安装后锁定依赖一致性
+pnpm install --frozen-lockfile
+
 # 类型检查
 pnpm check
 
-# Vitest：六爻规则、匿名访问边界、限流思路、fixture 与认证登出
+# Vitest：当前 7 个测试文件、40 项测试
 pnpm test
 
 # 生产构建
 pnpm build
 
-# 启动生产产物
+# 生产启动
 NODE_ENV=production PORT=3000 pnpm start
+
+# 生产依赖审计
+pnpm audit --prod --audit-level=low
 ```
 
-### 建议的简单稳定部署方案
+现有自动化测试覆盖六爻算法、固定卦、匿名权限边界、未配置 Key、限流原子语义、长图画布缩放、HTTP 安全头、同源写保护、畸形 JSON 和登出 Cookie 清理。
 
-优先使用**单一 Node 进程 + 托管 MySQL + HTTPS 反向代理或支持 Node 的托管平台**。Express 在同一域名下提供前端产物与 tRPC API，能够避免 CORS、跨站 Cookie 与摄像头权限配置复杂度。生产环境建议：
+### 简单稳定的部署方案
 
-1. 将代码部署到支持长期运行 Node 22 的服务；运行 `pnpm install --frozen-lockfile`、`pnpm build`，再以 `NODE_ENV=production pnpm start` 启动。
-2. 使用托管 MySQL 或同网络内的 MySQL 8；通过 CI/CD 或受控运维步骤执行 `pnpm db:migrate`。
-3. 通过平台代理或 Caddy/Nginx 提供 TLS，并把 HTTPS 请求转发给 Node 服务。
-4. 仅在前方确实有可信反向代理时设定 `TRUST_PROXY=true`；否则保留 `false`。
-5. 在部署平台的服务器端 Secret/Environment 设置 `DATABASE_URL` 与 `DEEPSEEK_API_KEY`，不要在构建参数、客户端变量或日志中暴露它们。
-6. 将健康检查指向首页或只读 tRPC 请求；部署后分别验证首页、一次匿名投掷、DeepSeek 成功/错误状态、历史页和实际摄像头权限流程。
+建议使用**单一 Node 22 服务 + 托管 MySQL + HTTPS 反向代理或支持 Node 的托管平台**。该方案前后端同域，避免 CORS、跨站 Cookie 与摄像头权限问题。
 
-> 默认建议保持前后端同域。它既满足匿名 tRPC 调用，也满足移动浏览器对摄像头安全上下文的要求。项目不需要前端单独部署或额外 CORS 白名单。
+1. 部署平台以服务器 Secret 配置 `DATABASE_URL`、`DEEPSEEK_API_KEY` 和生产公开元数据；不要把秘密设为构建时 `VITE_*`。
+2. CI/CD 使用 `pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test`、`pnpm build`；由受控迁移账户执行 `pnpm db:migrate`。
+3. 通过 Caddy、Nginx 或托管平台提供有效 TLS 并反向代理到 `NODE_ENV=production pnpm start`。
+4. 仅在 Node 确实位于可信代理后设置 `TRUST_PROXY=true`；否则保持 `false`。
+5. 为 MySQL 配置最小权限、加密备份、恢复演练与数据库访问控制。部署后检查 HTTPS/HSTS、首页、同源 API、一次真实 AI 解读、IP 第 11 次限额、长图导出、隐私页面和真机手势。
 
-## 安全与隐私
+## 素材、验收与待确认事项
 
-| 主题 | 当前措施 |
-|---|---|
-| API Key | `.env` 被 Git 忽略；`.env.example` 仅含占位符；DeepSeek Key 仅在服务器端读取。 |
-| 匿名隐私 | 匿名问题与解读只保存在浏览器本地；服务器不保存匿名 `readings`。 |
-| 滥用控制 | 数据库原子化的后端每日 10 次/IP 限额；前端不能绕过。 |
-| 经文约束 | 模型提示词限制仅引用本次提供的经文内容，降低杜撰原文风险。 |
-| 摄像头 | 仅在用户主动点击后请求权限；停止识别或离开页面后关闭媒体轨道。 |
-| OAuth | 未配置时禁用；当前匿名版本不依赖 Cookie 或登录状态。 |
-| 日志 | 不应记录 `DEEPSEEK_API_KEY`、完整授权头、数据库 URL 或未脱敏的用户敏感内容。 |
+| 待提供/待确认项 | 当前默认行为 | 后续动作 |
+|---|---|---|
+| DeepSeek API Key | 无 Key 时安全降级且不扣额度。 | 由作者在服务器 `.env`/Secret 写入轮换后的新 Key；进行一次最小真实解读验收。 |
+| 微信二维码 | 显示“待作者提供收款码”占位。 | 提供公开且可使用的图片文件。 |
+| 支付宝二维码 | 显示“待作者提供收款码”占位。 | 提供公开且可使用的图片文件。 |
+| Ko-fi 链接 | 显示“待作者提供链接”占位。 | 提供正式 HTTPS 链接。 |
+| 联系邮箱 | 显示“待提供正式联系邮箱”。 | 提供公开联系邮箱并写入 `VITE_CONTACT_EMAIL`。 |
+| 线上部署目标 | 未从仓库恢复到有效环境。 | 确认部署平台、域名、代理链路、MySQL 托管与备份负责人。 |
+| 真机验收 | 当前仅验证无摄像头错误路径及自动化逻辑。 | 使用 HTTPS 手机/桌面完成手势、导出和原生分享验收。 |
 
-如果真实 DeepSeek Key 曾经出现在代码仓库、历史部署日志、截图、聊天记录或其他不受控位置，请立即在 DeepSeek 控制台轮换该 Key，再将新 Key 写入服务器 Secret。
+## 参考资料
 
-## 当前状态、已知问题与重建说明
-
-### 已完成
-
-- [x] 修复缺失的 Vite、Vitest、Drizzle 和环境配置文件。
-- [x] 移除不存在的 Wouter 补丁引用，恢复 `pnpm install`。
-- [x] 修复 Vitest 根目录，当前测试集已覆盖 29 项测试。
-- [x] 修复 `ipRateLimits` 迁移日志，新增 `(ip, date)` 唯一索引迁移。
-- [x] 匿名历史改为完全依赖浏览器 `localStorage`，OAuth 不再阻塞应用启动。
-- [x] 增加服务器端 DeepSeek 超时、错误处理、响应结构校验和失败关闭的限流策略。
-- [x] 验证开发和生产模式均能提供同域页面与 API。
-- [x] 重建并强化 MediaPipe 手势投掷面板、状态机、摄像头错误提示、抖动保护和动画力度联动。
-
-### 待完成或需要真实环境验收
-
-- [ ] 在有效 `DEEPSEEK_API_KEY` 下完成真实 DeepSeek 成功响应的端到端测试。
-- [ ] 在具备摄像头、HTTPS 的手机与桌面浏览器上完成真实握拳/张掌、权限拒绝、摄像头占用和连续投掷测试。
-- [ ] 根据实际部署平台配置服务器 Secret、MySQL 备份、日志、HTTPS 和监控。
-- [ ] 如未来重新启用正式登录，再决定是否将匿名历史迁移到账号，并补充登录用户的完整数据库历史测试。
-- [ ] 评估并按需拆分较大的前端构建包；当前 Vite 会提示部分依赖分包超过 500KB，但构建成功。
-
-### 本次“重建”可以确认与无法确认的内容
-
-当前 GitHub 仓库只能追溯到 2026-03-03，之后的任务上下文、聊天记录、版本与功能变化无法从仓库恢复。本 README 以仓库内可运行的 React/tRPC/Drizzle 架构和本次确认的需求为准重建，不把旧仓库错误地视为最终版本。`REBUILD_BROWSER_NOTES.md` 记录了本次首页、投掷、结果、历史与无摄像头错误路径的实际浏览器验证。
-
-无法从当前仓库确认的内容包括：旧线上部署供应商、旧生产数据库、旧 DeepSeek Key、3 月 3 日后的产品需求及任何未提交版本。请不要将这些未知内容作为当前实现已经具备的能力。
+[1]: https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia "MDN: MediaDevices getUserMedia"
+[2]: https://expressjs.com/en/advanced/best-practice-security/ "Express: Production Best Practices: Security"
+[3]: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html "OWASP: HTTP Security Response Headers Cheat Sheet"
+[4]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Permissions-Policy "MDN: Permissions-Policy header"
+[5]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP "MDN: Content Security Policy"

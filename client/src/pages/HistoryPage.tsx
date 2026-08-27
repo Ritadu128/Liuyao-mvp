@@ -5,7 +5,7 @@ import { rebuildHexagram } from '@/lib/liuyao';
 import type { LineValue } from '@/lib/liuyao';
 import { HexagramDisplay } from '@/components/HexagramLine';
 import { cn } from '@/lib/utils';
-import { Streamdown } from 'streamdown';
+import { SafeMarkdown } from '@/components/SafeMarkdown';
 
 export default function HistoryPage() {
   const [, navigate] = useLocation();
@@ -128,7 +128,7 @@ export default function HistoryPage() {
                       <div>
                         <h4 className="text-xs font-medium text-amber-700 mb-2">综合解读</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
-                          <Streamdown>{selectedItem.integratedReading}</Streamdown>
+                          <SafeMarkdown>{selectedItem.integratedReading}</SafeMarkdown>
                         </div>
                       </div>
                     )}
@@ -136,7 +136,7 @@ export default function HistoryPage() {
                       <div>
                         <h4 className="text-xs font-medium text-amber-700 mb-2">卦象解读</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
-                          <Streamdown>{selectedItem.hexagramReading}</Streamdown>
+                          <SafeMarkdown>{selectedItem.hexagramReading}</SafeMarkdown>
                         </div>
                       </div>
                     )}

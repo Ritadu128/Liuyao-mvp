@@ -24,18 +24,9 @@ export async function lookupHexagram(bits: string): Promise<HexagramInfo | null>
 /**
  * 根据 key（如 "01"）加载经文数据
  * - 使用 cache: 'no-store' 避免浏览器缓存
- * - fetch 成功后 console.log 调试信息，并挂载到 window.__hexDebug[key]
  */
 export async function loadTextData(key: string): Promise<TextData | null> {
-  if (cachedTexts[key]) {
-    const cached = cachedTexts[key]!;
-    console.log(
-      '[HexagramData] 命中内存缓存',
-      '\n  key      :', key,
-      '\n  guaCi.length:', cached.gua_ci?.length ?? 0,
-    );
-    return cached;
-  }
+  if (cachedTexts[key]) return cachedTexts[key]!;
 
   const url = `/data/texts/${key}.json`;
 
@@ -50,31 +41,9 @@ export async function loadTextData(key: string): Promise<TextData | null> {
     const data: TextData = await res.json();
     cachedTexts[key] = data;
 
-    // ── 调试日志 ──────────────────────────────────────────────────────────
-    const guaCiPreview = (data.gua_ci ?? '').slice(0, 60);
-    console.log(
-      '[HexagramData] ✅ fetch 成功',
-      '\n  key         :', key,
-      '\n  url         :', url,
-      '\n  name        :', data.name,
-      '\n  guaCi[0:60] :', guaCiPreview,
-      '\n  guaCi.length:', data.gua_ci?.length ?? 0,
-    );
-
-    // 挂载到 window.__hexDebug 方便 DevTools 检查
-    (window as any).__hexDebug = (window as any).__hexDebug ?? {};
-    (window as any).__hexDebug[key] = {
-      key,
-      url,
-      name: data.name,
-      guaCiPreview,
-      guaCiLength: data.gua_ci?.length ?? 0,
-      fetchedAt: new Date().toISOString(),
-    };
-
     return data;
-  } catch (e) {
-    console.error('[HexagramData] fetch 异常 | url:', url, '| error:', e);
+  } catch {
+    console.error('[HexagramData] 经文加载失败');
     return null;
   }
 }
@@ -117,9 +86,9 @@ export function useHexagramLookup(originalBits: string, changedBits: string) {
           setChangedHexagram(null);
           setChangedText(null);
         }
-      } catch (e) {
+      } catch {
         setError('卦象数据加载失败');
-        console.error(e);
+        console.error('[HexagramData] 卦象数据加载失败');
       } finally {
         setLoading(false);
       }

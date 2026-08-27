@@ -10,6 +10,7 @@ import QuestionPage from "./pages/QuestionPage";
 import ThrowPage from "./pages/ThrowPage";
 import ResultPage from "./pages/ResultPage";
 import HistoryPage from "./pages/HistoryPage";
+import { DisclaimerPage, PrivacyPage } from "./pages/LegalPages";
 
 function Router() {
   return (
@@ -18,6 +19,8 @@ function Router() {
       <Route path={"/throw"} component={ThrowPage} />
       <Route path={"/result"} component={ResultPage} />
       <Route path={"/history"} component={HistoryPage} />
+      <Route path={"/privacy"} component={PrivacyPage} />
+      <Route path={"/disclaimer"} component={DisclaimerPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

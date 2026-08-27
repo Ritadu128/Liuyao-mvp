@@ -7,6 +7,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { ENV } from "./env";
 import { serveStatic, setupVite } from "./vite";
+import { applySecurityHeaders, enforceSameOriginApiMutations, handleMalformedJson } from "./security";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -30,11 +31,14 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  app.disable("x-powered-by");
+  app.use(applySecurityHeaders);
   // 只有在部署环境明确开启时才信任代理头，避免本地伪造 X-Forwarded-For 绕过限流。
   if (ENV.trustProxy) app.set("trust proxy", 1);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // 本项目不接收用户文件；限制请求体以降低资源耗尽风险。
+  app.use(express.json({ limit: "100kb" }));
+  app.use(handleMalformedJson);
+  app.use(express.urlencoded({ limit: "100kb", extended: false }));
   // OAuth 为后续可选能力；匿名版本未配置认证环境变量时不注册回调路由。
   if (process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID && process.env.JWT_SECRET) {
     const { registerOAuthRoutes } = await import("./oauth");
@@ -45,6 +49,7 @@ async function startServer() {
   // tRPC API
   app.use(
     "/api/trpc",
+    enforceSameOriginApiMutations,
     createExpressMiddleware({
       router: appRouter,
       createContext,

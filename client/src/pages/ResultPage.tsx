@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useDivination } from '@/contexts/DivinationContext';
 import { useHexagramLookup } from '@/hooks/useHexagramData';
 import { HexagramDisplay } from '@/components/HexagramLine';
 import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
-import { Streamdown } from 'streamdown';
+import { SafeMarkdown } from '@/components/SafeMarkdown';
 import {
   FANG_SONG, SONG,
   CloudPattern, ScrollCard, ScrollDivider, WaveLine, AncientTabs,
   AncientLoading, Disclaimer,
 } from '@/components/ScrollUI';
 import { addLocalReading } from '@/hooks/useLocalHistory';
+import { ReadingExportActions } from '@/components/ReadingExport';
+import { SupportAuthor } from '@/components/SupportAuthor';
 
 type TabType = 'integrated' | 'hexagram';
 
@@ -21,6 +23,7 @@ export default function ResultPage() {
     setIntegratedReading, setHexagramReading, setIsLoadingReading, setSavedReadingId } = useDivination();
   const [activeTab, setActiveTab] = useState<TabType>('integrated');
   const [revealed, setRevealed] = useState(false);
+  const exportTargetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!state.hexagramResult) navigate('/');
   }, [state.hexagramResult, navigate]);
@@ -171,8 +174,8 @@ export default function ResultPage() {
         </div>
 
         {/* 内容区 */}
-        <div className="flex-1 max-w-lg mx-auto w-full px-4 py-5 space-y-4">
-
+        <div className="flex-1 max-w-lg mx-auto w-full px-4 py-5">
+          <div ref={exportTargetRef} className="space-y-4" style={{ background: '#faf6ed' }}>
           {/* 问题回顾 */}
           <div
             className="px-4 py-3"
@@ -292,6 +295,7 @@ export default function ResultPage() {
               reading={state.integratedReading}
               isLoading={isLoading}
               error={generateReading.error?.message}
+              exportTargetRef={exportTargetRef}
             />
           )}
 
@@ -303,13 +307,14 @@ export default function ResultPage() {
               movingLines={hexResult.movingLines}
               isLoading={isLoading}
               error={generateReading.error?.message}
+              exportTargetRef={exportTargetRef}
             />
           )}
+          <Disclaimer />
+          </div>
         </div>
 
-        <div className="pb-6">
-          <Disclaimer />
-        </div>
+        <div className="pb-6" />
       </div>
     </div>
   );
@@ -335,10 +340,11 @@ function ChangedHexagramDisplay({
 }
 
 // ─── 综合解读 Tab ──────────────────────────────────────────────
-function IntegratedTab({ reading, isLoading, error }: {
+function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
   reading: string;
   isLoading: boolean;
   error?: string;
+  exportTargetRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
     <ScrollCard>
@@ -356,22 +362,30 @@ function IntegratedTab({ reading, isLoading, error }: {
             className="leading-[2.2] prose prose-stone prose-sm max-w-none ancient-reading-content"
             style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
           >
-            <Streamdown>{reading}</Streamdown>
+            <SafeMarkdown>{reading}</SafeMarkdown>
           </div>
         ) : null}
       </div>
+      <SupportAuthor />
+      <ReadingExportActions
+        targetRef={exportTargetRef}
+        title="综合解读"
+        filePrefix="六爻-综合解读"
+        disabled={!reading || isLoading || Boolean(error)}
+      />
     </ScrollCard>
   );
 }
 
 // ─── 卦象解读 Tab ──────────────────────────────────────────────
-function HexagramTab({ reading, originalText, changedText, movingLines, isLoading, error }: {
+function HexagramTab({ reading, originalText, changedText, movingLines, isLoading, error, exportTargetRef }: {
   reading: string;
   originalText: any;
   changedText: any;
   movingLines: number[];
   isLoading: boolean;
   error?: string;
+  exportTargetRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
     <div className="space-y-4">
@@ -391,7 +405,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
               className="leading-[2.2] prose prose-stone prose-sm max-w-none ancient-reading-content"
               style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
             >
-              <Streamdown>{reading}</Streamdown>
+              <SafeMarkdown>{reading}</SafeMarkdown>
             </div>
           ) : null}
         </div>
@@ -431,6 +445,13 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
           </div>
         </ScrollCard>
       )}
+      <SupportAuthor />
+      <ReadingExportActions
+        targetRef={exportTargetRef}
+        title="卦象解读"
+        filePrefix="六爻-卦象解读"
+        disabled={!reading || isLoading || Boolean(error)}
+      />
     </div>
   );
 }
