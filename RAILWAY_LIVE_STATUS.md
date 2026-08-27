@@ -1,6 +1,6 @@
 # Railway 线上部署状态记录
 
-**记录时间：** 2026-08-27（GMT+8）  
+**记录时间：** 2026-08-28（GMT+8）
 **项目：** `beneficial-courtesy`  
 **环境：** `production`  
 **Web Service：** `Liuyao-mvp`
@@ -21,7 +21,7 @@
 | 随喜素材发布 | 用户授权公开的微信、支付宝二维码、公开联系邮箱和 Ko-fi 链接已随提交 `244305c` 推送到 `main`。 | 正式域名轮询确认 `/support/wechat-pay.jpg` 返回 200 且为 117,915 字节 JPEG、`/support/alipay-pay.webp` 返回 200 且为 43,188 字节，同时 `/health` 返回 200；初次 889 字节响应是新部署切换前的错误页面，随后版本已切流。 |
 | 正式域名复验 | `https://liuyao.win/`、`/privacy`、`/disclaimer`、`/health` 及两张收款码均返回 HTTPS 200。 | 首页/政策页为 889 字节 SPA HTML 文档属正常；抽检已返回 CSP、HSTS（含子域）、nosniff、严格 Referrer-Policy 与摄像头 Permissions-Policy。 |
 | Railway GitHub App | 用户提供的 GitHub 设置截图显示 `Only select repositories`，且唯一被选择的仓库为 `Ritadu128/Liuyao-mvp`；用户已确认点击 Save。 | 这是当前最直接的授权证据。沙箱中的 GitHub CLI 使用的是受限集成令牌，对安装与 Webhook 查询返回 401/403，不能用其错误推断用户的 Railway App 授权无效。 |
-| 已应用生产配置 | 用户确认后已提交 8 项变更：有效 EU West 单副本、`DATABASE_URL=${{MySQL.MYSQL_URL}}`、`TRUST_PROXY=true`、锁定构建命令、`pnpm start`、`pnpm db:migrate` 与 `/health`。 | 未启用 Public Access、TCP Proxy、备份、预算控制或任何 DeepSeek/支付/Cloudflare 配置。 |
+| 基础生产配置 | 用户确认后已提交有效 EU West 单副本、`DATABASE_URL=${{MySQL.MYSQL_URL}}`、`TRUST_PROXY=true`、锁定构建命令、`pnpm start`、`pnpm db:migrate` 与 `/health`。 | 未启用 MySQL Public Access、TCP Proxy、备份或预算控制；DeepSeek Secret 由后续独立变量变更应用。 |
 | 数据库引用 | 已新增服务变量 `DATABASE_URL`，值在 Railway UI 中保持掩码，来源为 `${{MySQL.MYSQL_URL}}` 私有引用。 | 已随成功部署应用；未读取、复制或记录数据库密码。 |
 | 构建命令 | 已设置 `pnpm install --frozen-lockfile && pnpm build`。 | 已随成功部署应用；构建日志显示 pnpm 10.4.1 以锁定依赖完成构建。 |
 | 启动命令 | 已设置 `pnpm start`。 | 已随重新部署提交；该命令会以生产模式执行已验证的 Node 入口。 |
@@ -37,5 +37,8 @@
 | 首页可达性 | 浏览器导航到临时域名根路径时获得页面标题“六爻占卜 · 易经卦象解读”。 | 已确认首页可达；浏览器扩展导致后续截图读取失败，故完整交互与摄像头/分享真机验收仍待进行。 |
 | 公开路由与 HTTPS | `/`、`/privacy`、`/disclaimer`、`/health` 均为 HTTPS HTTP 200；HTTP 根路径返回 301 到 HTTPS。 | 已覆盖首页、法务入口与健康端点的基础可达性；未对用户的本地摄像头、移动分享和完整投掷流程作真机验收。 |
 | 迁移与启动验证 | Deploy Logs 显示 `pnpm db:migrate`、`drizzle-kit migrate`、`migrations applied successfully!`，随后 `pnpm start` 以生产模式启动并监听平台端口 8080。 | 已验证本次部署的 MySQL 迁移与应用启动；Railway 将 `/health` 配置纳入部署流程，部署已被平台标记成功。 |
+| DeepSeek Secret 应用 | 作者在 `Liuyao-mvp` 的 production Service Variables 中自行添加 `DEEPSEEK_API_KEY`，UI 仅展示掩码；应用此前显示 `Edited · 1 Change`。 | 经作者明确确认点击 Deploy 后，Railway 创建新部署 `b5927a20` 并显示 `Active` / `Deployment successful`；未读取、复制或记录变量值。 |
+| 真实 AI 解读验收 | 在新部署 Active 后，对正式同源 `reading.generate` 发起一次最小、有效的批处理请求。 | 返回 HTTP 200，响应同时含 `integratedReading` 与 `hexagramReading`，无 tRPC error；仅检查结构和状态，未记录完整问题、生成内容或 Secret。该有效请求会计入其来源 IP 的当日十次额度。 |
+| 变量生效前受控拒绝 | 在变量已填写但尚未点击 Apply/Deploy 时，正确格式的同源解读请求返回 HTTP 412 / `PRECONDITION_FAILED`。 | 说明运行中的旧实例尚未加载新变量；请求在额度递增和外部模型调用之前被拒绝，未消耗 DeepSeek 调用或 IP 额度。 |
 
-> 本记录不包含任何密码、Token、数据库连接串、API Key 或私有日志内容。临时域名已完成公开可达、数据库就绪、法务路由、HTTPS 重定向、无 DeepSeek Key 受控响应、跨站写入拒绝与 tRPC 输入校验抽检；GitHub 最小授权、仓库可见性和自动部署开关已恢复，且已由真实文档提交成功复验。`liuyao.win` 已完成 Railway/Cloudflare 配置并通过正式 HTTPS 健康检查；授权随喜素材已随生产部署发布。真机摄像头/分享、备份、成本控制以及由用户本人填写新的 DeepSeek Secret 仍待完成。
+> 本记录不包含任何密码、Token、数据库连接串、API Key 或私有日志内容。临时域名已完成公开可达、数据库就绪、法务路由、HTTPS 重定向、跨站写入拒绝与 tRPC 输入校验抽检；GitHub 最小授权、仓库可见性和自动部署开关已恢复，且已由真实文档提交成功复验。`liuyao.win` 已完成 Railway/Cloudflare 配置、正式 HTTPS 健康检查和一次真实 DeepSeek 结构化解读验收；授权随喜素材已随生产部署发布。真机摄像头/分享、二维码实际扫码、备份和成本控制仍待作者在真实设备或升级后完成。

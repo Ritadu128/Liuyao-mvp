@@ -30,9 +30,9 @@
 | 来源 | 内容 | 当前状态 |
 |---|---|---|
 | 原仓库可确认 | React/tRPC/Drizzle 架构、六爻计算、64 卦静态经文、Three.js 硬币、MediaPipe 手势基础、结果页两类解读。 | 已保留并在当前基线上修复。 |
-| 本次重建第一阶段 | 可安装/启动/构建/测试、同域 Express、MySQL 迁移、匿名 localStorage 历史、后端每日 IP 限额、DeepSeek 安全调用、手势状态机。 | 已实现；真实 DeepSeek 和真实摄像头真机验收待完成。 |
+| 本次重建第一阶段 | 可安装/启动/构建/测试、同域 Express、MySQL 迁移、匿名 localStorage 历史、后端每日 IP 限额、DeepSeek 安全调用、手势状态机。 | 已实现；生产 DeepSeek 已完成一次真实结构化响应验收，摄像头真机验收仍待完成。 |
 | 本轮补充需求 | 两类解读分别导出长图、原生分享/PNG 下载降级、随喜占位、隐私/免责声明网页、安全审计与整改。 | 已实现代码与测试；真实 AI 内容下的端到端导出、移动分享和真机摄像头仍需验收。 |
-| Railway 上线与域名 | Railway 健康检查、构建/启动/迁移、同项目私有 MySQL、自动部署、临时域名、Cloudflare DNS 与正式域名绑定。 | 已在用户本人 Railway、GitHub 与 Cloudflare 账户中完成并通过健康检查；备份、成本上限和 DeepSeek Secret 仍有计划/账户边界。详见 `RAILWAY_LIVE_STATUS.md`。 |
+| Railway 上线与域名 | Railway 健康检查、构建/启动/迁移、同项目私有 MySQL、自动部署、临时域名、Cloudflare DNS 与正式域名绑定。 | 已在用户本人 Railway、GitHub 与 Cloudflare 账户中完成并通过健康检查和一次真实 AI 解读验收；备份与成本上限仍受 Trial/账户边界限制。详见 `RAILWAY_LIVE_STATUS.md`。 |
 
 ## 核心功能与用户流程
 
@@ -44,7 +44,7 @@
 | 3D 铜钱 | Three.js 渲染上抛、翻转、落地；手势蓄力影响动画视觉力度，不改变随机结果。 | 已构建验证。 |
 | 手势投掷 | MediaPipe 识别握拳/张掌，含稳定时间、置信度、冷却和权限错误提示。 | 无摄像头错误路径已验证；HTTPS 真机待验收。 |
 | 经文 | `client/public/data` 内的 64 卦映射及经文 JSON。 | 已纳入主流程。 |
-| 两类 AI 解读 | **综合解读**与**卦象解读**分别由服务器返回结构化字段。 | 无 Key 的受控降级已验证；真实成功响应待新 Key。 |
+| 两类 AI 解读 | **综合解读**与**卦象解读**分别由服务器返回结构化字段。 | 已在 `liuyao.win` 对一次最小有效请求获得 HTTP 200 与两项结构字段；不记录请求正文、完整输出或 Secret。 |
 | 匿名历史 | 浏览器 localStorage，刷新或重新打开同一浏览器后可见，最多 30 条。 | 已实现。 |
 | 长图导出 | 每个解读页签独立导出问题、卦象、卦名、动爻、相关经文、解读及简短提示。 | 代码、缩放单元测试和构建已通过；真实长内容/手机分享待验收。 |
 | 随喜 | 两个解读模块底部均有按需展示的微信、支付宝收款码和安全的 Ko-fi 外链。 | 作者明确授权的公开素材已接入；桌面/手机实际扫码与外链验收待完成。 |
@@ -200,7 +200,7 @@ pnpm db:push
 | `NODE_ENV` | 否 | `development` 或 `production`。 |
 | `PORT` | 生产环境必需 | Railway 自动注入；生产环境必须严格监听该值。本地开发缺失或无效时默认 `3000`。 |
 | `DATABASE_URL` | 是 | MySQL URL；后端限流依赖它。 |
-| `DEEPSEEK_API_KEY` | 真实解读必需 | 仅服务器读取；当前项目等待新的有效 Key。 |
+| `DEEPSEEK_API_KEY` | 真实解读必需 | 仅服务器读取；生产 Secret 已由作者本人直接设置并完成一次成功验收，绝不复制到 Git、README 或 `VITE_*`。 |
 | `DEEPSEEK_MODEL` | 否 | 默认 `deepseek-chat`。 |
 | `DEEPSEEK_TIMEOUT_MS` | 否 | 服务器钳制到 3000–60000ms，默认 20000ms。 |
 | `TRUST_PROXY` | 可信反向代理时必需 | 只有 Node 位于可信代理后时设 `true`。 |
@@ -210,7 +210,7 @@ pnpm db:push
 
 ## DeepSeek 服务端解读
 
-当前已完成**可配置且安全的接入代码**，但因没有有效 `DEEPSEEK_API_KEY`，尚未验证真实成功响应。无 Key 时 API 返回受控“解读服务尚未配置”提示，且不会消耗 IP 限额。
+当前已完成安全的服务端接入，并于 2026-08-28 在 `liuyao.win` 对一次最小有效请求验证真实成功响应：HTTP 200 且同时返回 `integratedReading` 与 `hexagramReading`。验收只检查状态和字段存在性，不保存完整问题、模型输出或任何 Secret。此前无 Key 时的 API 受控提示也已验证；该分支在额度递增前返回，因而不会消耗 IP 限额。
 
 1. 结果页收集问题、本卦、变卦、动爻、卦辞、象曰和动爻爻辞。
 2. 浏览器同域调用 `reading.generate`，不会携带 DeepSeek Key。
@@ -219,7 +219,7 @@ pnpm db:push
 5. 服务器校验上游 HTTP 状态、`choices` 结构、JSON 文本与两项解读字段；仅验证通过后返回。
 6. 浏览器将成功结果保存到 localStorage，并以安全 Markdown 渲染；原始 HTML 不会作为 DOM 执行。
 
-提示词约束模型只能引用本次传入的经文原文，并保持客观中立，不作绝对预测。Key 准备好后，请仅写入服务器 `.env` 或部署平台 Secret，然后执行一次最小真实请求进行验收。
+提示词约束模型只能引用本次传入的经文原文，并保持客观中立，不作绝对预测。未来轮换 Key 时，仍应仅由作者在服务器 `.env` 或部署平台 Secret 中直接更新，再确认新部署生效后进行一次最小真实请求验收。
 
 ## 匿名历史与 IP 限额
 
@@ -256,7 +256,7 @@ pnpm db:push
 | 长内容/高分辨率 | 计算画布边长与总像素上限，自动降低清晰度而不裁切内容，避免常见 Canvas 内存/尺寸失败。 |
 | 字体或生成错误 | 显示生成中状态或具体失败提示，允许重新尝试。 |
 
-当前自动化测试覆盖普通手机宽度、高分辨率和极端超长内容的缩放边界。仍需在真实成功 AI 解读下，以手机小屏、高分辨率桌面和超长文本完成视觉导出及原生分享验收。
+当前自动化测试覆盖普通手机宽度、高分辨率和极端超长内容的缩放边界。虽然服务端已收到一次真实成功 AI 响应，仍需在浏览器结果页中以手机小屏、高分辨率桌面和超长文本完成视觉导出及原生分享验收。
 
 ## 随喜支持作者
 
@@ -279,7 +279,7 @@ pnpm db:push
 | 已通过 | Key 仅服务端读取；匿名历史不写服务器；Drizzle 参数化访问；固定 DeepSeek URL；数据库限流原子性；匿名模式不使用 Cookie。 |
 | 已修复 | 安全响应头与 HSTS 条件、CSP、同源 JSON 写保护、请求体上限、畸形 JSON 处理、严格 Zod 输入、生产调试清理、安全 Markdown、未使用高风险依赖移除、Express/Axios/Drizzle/tRPC 升级。 |
 | 依赖审计 | 最终执行 `pnpm audit --prod --audit-level=low` 返回 **No known vulnerabilities found**。 |
-| 仍需处理 | 真实 DeepSeek 成功/失败响应验收、依赖最小化与代码分割、单 IP 限流对代理/NAT 的天然限制。 |
+| 仍需处理 | 真实 DeepSeek 上游失败的部署端回归、依赖最小化与代码分割、单 IP 限流对代理/NAT 的天然限制。一次真实成功响应已在生产完成验证。 |
 | 需部署验证 | TLS/HSTS、可信代理 `TRUST_PROXY`、生产 CSP、未来 OAuth Cookie、MySQL 备份/恢复、HTTPS 真机摄像头生命周期。 |
 
 安全响应头参考 Express、OWASP 与 MDN 的生产建议。[2] [3] [4] CSP 是纵深防御，不替代输入校验和安全渲染。[5]
@@ -312,7 +312,7 @@ pnpm audit --prod --audit-level=low
 
 ### 简单稳定的部署方案
 
-建议使用**单一 Node 22 服务 + 托管 MySQL + HTTPS 反向代理或支持 Node 的托管平台**。该方案前后端同域，避免 CORS、跨站 Cookie 与摄像头权限问题。
+建议使用**单一 Node 22+ 服务 + 托管 MySQL + HTTPS 反向代理或支持 Node 的托管平台**。该方案前后端同域，避免 CORS、跨站 Cookie 与摄像头权限问题；当前 Railway 构建环境显示为 Node 24.19.0。
 
 > **当前生产状态：** `https://liuyao.win` 已在用户本人 Cloudflare 账户和 Railway 项目中完成绑定。一个 Railway GitHub Web Service 与一个同项目私有 MySQL 服务均在线，持续部署、迁移与 `/health` 已通过；非敏感验证记录见 [RAILWAY_LIVE_STATUS.md](./RAILWAY_LIVE_STATUS.md)。
 
@@ -326,7 +326,7 @@ pnpm audit --prod --audit-level=low
 
 服务端新增 `GET /health`。它只返回 `{ "status": "ok" }` 或 `{ "status": "unavailable" }`，不泄露数据库连接、错误详情或任何 Secret；只有 MySQL 私有连接可用时才返回 HTTP 200。Railway 将在切换每一次新部署流量前检查此端点，因此生产迁移失败或数据库不可达时不会被误判为可用。
 
-Railway Web Service 使用 `pnpm install --frozen-lockfile && pnpm build` 构建、`pnpm db:migrate` 作为部署前迁移、`pnpm start` 启动，并在平台注入的 `PORT` 上**严格监听**。生产端口缺失、无效或已被占用时服务会失败，而不会改用相邻端口；这可避免 Railway 健康检查与实际监听端口不一致。Web Service 的 `DATABASE_URL` 必须引用**同一 Railway 项目**中 MySQL 服务的私有 `MYSQL_URL`；不得为了连接应用而开启 MySQL Public Access。`DEEPSEEK_API_KEY` 由作者在 Railway Variables 中设置并 Seal，不能写入 Git、构建日志或 `VITE_*` 变量。
+Railway Web Service 使用 `pnpm install --frozen-lockfile && pnpm build` 构建、`pnpm db:migrate` 作为部署前迁移、`pnpm start` 启动，并在平台注入的 `PORT` 上**严格监听**。生产端口缺失、无效或已被占用时服务会失败，而不会改用相邻端口；这可避免 Railway 健康检查与实际监听端口不一致。Web Service 的 `DATABASE_URL` 必须引用**同一 Railway 项目**中 MySQL 服务的私有 `MYSQL_URL`；不得为了连接应用而开启 MySQL Public Access。`DEEPSEEK_API_KEY` 已由作者在 Railway Variables 中直接设置且 UI 仅显示掩码；若平台提供 Seal 选项，应由作者本人启用。它不能写入 Git、构建日志或 `VITE_*` 变量。
 
 已先在 Railway 临时 `*.up.railway.app` 域名完成验收，之后才添加 `liuyao.win` Custom Domain。Cloudflare 根域 CNAME 与 Railway TXT 所有权验证记录均以 Railway 面板实际生成值为准；当前根域已启用橙云代理，Cloudflare SSL/TLS 模式为 `Full`。非敏感的实时绑定与验收记录见 [RAILWAY_LIVE_STATUS.md](./RAILWAY_LIVE_STATUS.md)。
 
@@ -336,7 +336,7 @@ Railway MySQL 原生 Backups/PITR 在当前 Trial 工作区仅对 Pro 计划可�
 
 | 待提供/待确认项 | 当前默认行为 | 后续动作 |
 |---|---|---|
-| DeepSeek API Key | 无 Key 时安全降级且不扣额度；先前误发到聊天的 Key 已由作者撤销。 | 作者仅在 Railway Secret 页面本人填入一枚全新的 Key；进行一次最小真实解读验收。 |
+| DeepSeek API Key | 生产 Secret 已由作者本人设置且值在 UI 中掩码；已完成一次最小真实解读验收。 | 未来轮换仅在 Railway Secret 页面本人完成，再确认部署与最小成功响应；不得在聊天、截图、Git 或文档中复制值。 |
 | 微信/支付宝二维码 | 作者授权的公开二维码已放入 `client/public/support/`，默认不展示，点击对应按钮后加载。 | 在桌面与手机实际扫码验收，确认二维码仍可用后再长期保留。 |
 | Ko-fi 链接与联系邮箱 | 已接入作者提供的公开 HTTPS Ko-fi 地址与联系邮箱。 | 上线后复核外链目标、政策文案与联系渠道。 |
 | Railway 与 MySQL | 同一 Railway 项目内的 Web Service 与私有 MySQL 已上线；迁移、`/health` 与 GitHub 自动部署已实测。 | 保持数据库私有；更新依赖或 Schema 后观察自动部署和迁移日志。 |
