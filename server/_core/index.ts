@@ -71,4 +71,8 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  const errorName = error instanceof Error ? error.name : "unknown";
+  console.error(`[Startup] Fatal server startup error (${errorName}).`);
+  process.exitCode = 1;
+});
