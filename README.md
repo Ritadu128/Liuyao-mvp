@@ -20,6 +20,7 @@
 - [隐私政策与免责声明](#隐私政策与免责声明)
 - [安全审计与加固](#安全审计与加固)
 - [测试、构建与部署](#测试构建与部署)
+- [Railway 与 Cloudflare 生产部署](#railway-与-cloudflare-生产部署)
 - [素材、验收与待确认事项](#素材验收与待确认事项)
 
 ## 版本边界与当前状态
@@ -31,6 +32,7 @@
 | 原仓库可确认 | React/tRPC/Drizzle 架构、六爻计算、64 卦静态经文、Three.js 硬币、MediaPipe 手势基础、结果页两类解读。 | 已保留并在当前基线上修复。 |
 | 本次重建第一阶段 | 可安装/启动/构建/测试、同域 Express、MySQL 迁移、匿名 localStorage 历史、后端每日 IP 限额、DeepSeek 安全调用、手势状态机。 | 已实现；真实 DeepSeek 和真实摄像头真机验收待完成。 |
 | 本轮补充需求 | 两类解读分别导出长图、原生分享/PNG 下载降级、随喜占位、隐私/免责声明网页、安全审计与整改。 | 已实现代码与测试；真实 AI 内容下的端到端导出、移动分享和真机摄像头仍需验收。 |
+| Railway 上线准备 | Railway 健康检查、构建/启动/迁移方案、MySQL 备份与支出提醒计划，及 Cloudflare 域名绑定顺序。 | 已完成代码和文档准备；Railway 项目、MySQL、Secrets、临时域名及正式 DNS 由用户本人账户操作后再验证。 |
 
 ## 核心功能与用户流程
 
@@ -108,6 +110,7 @@ Liuyao-mvp/
 ├── drizzle/                               # schema、SQL 迁移与元数据
 ├── server/
 │   ├── _core/security.ts                  # 安全响应头、JSON 与同源写保护
+│   ├── _core/health.ts                    # Railway 数据库就绪检查
 │   ├── _core/index.ts                     # Express 启动入口
 │   ├── routers/reading.ts                 # 限流与 DeepSeek 调用
 │   ├── db.ts                              # Drizzle/MySQL 入口
@@ -116,6 +119,8 @@ Liuyao-mvp/
 ├── drizzle.config.ts                      # Drizzle Kit 配置
 ├── pnpm-workspace.yaml                    # 版本化安全依赖覆盖
 ├── SECURITY.md                            # 可追踪安全审计与整改记录
+├── RAILWAY_DEPLOYMENT_PLAN.md             # Railway、备份、预算与域名绑定计划
+├── DEPLOYMENT_AUDIT.md                    # 已失效旧域名的只读核验记录
 ├── vite.config.ts / vitest.config.ts      # 构建与测试配置
 └── REBUILD_BROWSER_NOTES.md               # 第一阶段浏览器验证记录
 ```
@@ -293,7 +298,7 @@ pnpm install --frozen-lockfile
 # 类型检查
 pnpm check
 
-# Vitest：当前 7 个测试文件、40 项测试
+# Vitest：当前 8 个测试文件、42 项测试
 pnpm test
 
 # 生产构建
@@ -306,17 +311,29 @@ NODE_ENV=production PORT=3000 pnpm start
 pnpm audit --prod --audit-level=low
 ```
 
-现有自动化测试覆盖六爻算法、固定卦、匿名权限边界、未配置 Key、限流原子语义、长图画布缩放、HTTP 安全头、同源写保护、畸形 JSON 和登出 Cookie 清理。
+现有自动化测试覆盖六爻算法、固定卦、匿名权限边界、未配置 Key、限流原子语义、长图画布缩放、HTTP 安全头、同源写保护、畸形 JSON、登出 Cookie 清理，以及 Railway 数据库就绪健康检查。
 
 ### 简单稳定的部署方案
 
 建议使用**单一 Node 22 服务 + 托管 MySQL + HTTPS 反向代理或支持 Node 的托管平台**。该方案前后端同域，避免 CORS、跨站 Cookie 与摄像头权限问题。
+
+> **当前生产目标：** 用户已注册 `liuyao.win` 并由本人 Cloudflare 账户管理。项目采用 Railway 的一个项目承载一个 GitHub Web Service 与一个私有 MySQL 服务；详细操作与账户边界见 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。尚未创建 Railway 项目或服务，不能将本段视为已上线。
 
 1. 部署平台以服务器 Secret 配置 `DATABASE_URL`、`DEEPSEEK_API_KEY` 和生产公开元数据；不要把秘密设为构建时 `VITE_*`。
 2. CI/CD 使用 `pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test`、`pnpm build`；由受控迁移账户执行 `pnpm db:migrate`。
 3. 通过 Caddy、Nginx 或托管平台提供有效 TLS 并反向代理到 `NODE_ENV=production pnpm start`。
 4. 仅在 Node 确实位于可信代理后设置 `TRUST_PROXY=true`；否则保持 `false`。
 5. 为 MySQL 配置最小权限、加密备份、恢复演练与数据库访问控制。部署后检查 HTTPS/HSTS、首页、同源 API、一次真实 AI 解读、IP 第 11 次限额、长图导出、隐私页面和真机手势。
+
+### Railway 与 Cloudflare 生产部署
+
+服务端新增 `GET /health`。它只返回 `{ "status": "ok" }` 或 `{ "status": "unavailable" }`，不泄露数据库连接、错误详情或任何 Secret；只有 MySQL 私有连接可用时才返回 HTTP 200。Railway 将在切换每一次新部署流量前检查此端点，因此生产迁移失败或数据库不可达时不会被误判为可用。
+
+Railway Web Service 使用 `pnpm install --frozen-lockfile && pnpm build` 构建、`pnpm db:migrate` 作为部署前迁移、`pnpm start` 启动，并在平台注入的 `PORT` 上监听。Web Service 的 `DATABASE_URL` 必须引用**同一 Railway 项目**中 MySQL 服务的私有 `MYSQL_URL`；不得为了连接应用而开启 MySQL Public Access。`DEEPSEEK_API_KEY` 由作者在 Railway Variables 中设置并 Seal，不能写入 Git、构建日志或 `VITE_*` 变量。
+
+先在 Railway 为 Web Service 生成 `*.up.railway.app` 临时域名，并完成部署测试。随后在 Railway 添加 `liuyao.win` Custom Domain；**必须以 Railway 面板实际生成的值为准**，在 Cloudflare 添加对应 CNAME 和 TXT 所有权验证记录，不能预先猜测记录。Cloudflare 代理开启时，将 SSL/TLS 设为 `Full`，并保持 Universal SSL 开启；绑定过程和精确记录见 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。
+
+Railway MySQL 应优先启用平台原生 Backups，并确认保留期与恢复办法。用户还需在 Railway Workspace Usage 设置邮件软提醒及是否启用硬上限；硬上限会使工作负载离线，应由用户自行决定金额。完整备份/支出运维方案和每个用户操作步骤均已写入 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。
 
 ## 素材、验收与待确认事项
 
@@ -327,7 +344,9 @@ pnpm audit --prod --audit-level=low
 | 支付宝二维码 | 显示“待作者提供收款码”占位。 | 提供公开且可使用的图片文件。 |
 | Ko-fi 链接 | 显示“待作者提供链接”占位。 | 提供正式 HTTPS 链接。 |
 | 联系邮箱 | 显示“待提供正式联系邮箱”。 | 提供公开联系邮箱并写入 `VITE_CONTACT_EMAIL`。 |
-| 线上部署目标 | 未从仓库恢复到有效环境。 | 确认部署平台、域名、代理链路、MySQL 托管与备份负责人。 |
+| Railway 与 MySQL | Railway 项目尚未创建；部署健康检查与操作清单已完成。 | 使用本人 GitHub 登录 Railway，创建同项目 Web Service 和 MySQL；再填写 Railway Secret/引用变量。 |
+| 临时/正式域名 | `liuyao.win` 已由用户购买并在 Cloudflare 激活，但尚未绑定生产服务。 | 先发送 Railway `*.up.railway.app` 临时域名进行测试；确认后再按 Railway 实际值添加 Cloudflare CNAME/TXT。 |
+| 备份与支出提醒 | 已有原生 Backups 优先、独立加密备份备选和预算提醒方案。 | 由用户确认 Railway 原生备份可用性、告警邮箱、软提醒金额、硬上限及独立备份需求。 |
 | 真机验收 | 当前仅验证无摄像头错误路径及自动化逻辑。 | 使用 HTTPS 手机/桌面完成手势、导出和原生分享验收。 |
 
 ## 参考资料

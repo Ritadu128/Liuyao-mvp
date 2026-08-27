@@ -8,6 +8,7 @@ import { createContext } from "./context";
 import { ENV } from "./env";
 import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, enforceSameOriginApiMutations, handleMalformedJson } from "./security";
+import { createHealthHandler } from "./health";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -39,6 +40,8 @@ async function startServer() {
   app.use(express.json({ limit: "100kb" }));
   app.use(handleMalformedJson);
   app.use(express.urlencoded({ limit: "100kb", extended: false }));
+  // 仅返回就绪状态；用于 Railway 切流前确认 MySQL 私有连接可用。
+  app.get("/health", createHealthHandler());
   // OAuth 为后续可选能力；匿名版本未配置认证环境变量时不注册回调路由。
   if (process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID && process.env.JWT_SECRET) {
     const { registerOAuthRoutes } = await import("./oauth");
