@@ -9,16 +9,16 @@
 | 项目 | 当前状态 | Railway 准备动作 |
 |---|---|---|
 | 构建 | `pnpm build` 生成 `dist/public` 与 `dist/index.js` | Railway Build Command 使用 `pnpm install --frozen-lockfile && pnpm build`。 |
-| 启动 | `pnpm start` 以生产模式执行 `node dist/index.js`，并读取平台提供的 `PORT` | Railway Start Command 使用 `pnpm start`。 |
+| 启动 | `pnpm start` 以生产模式执行 `node dist/index.js`，严格监听 Railway 提供的 `PORT`；端口占用时直接失败，不会改用相邻端口。 | Railway Start Command 使用 `pnpm start`，不要手动覆盖 Railway 注入的 `PORT`。 |
 | 数据库 | Drizzle + MySQL，迁移命令为 `pnpm db:migrate` | Web 服务部署前运行迁移；应用 `DATABASE_URL` 以引用变量关联 Railway MySQL 的私有连接串。 |
-| 健康检查 | 当前应用尚无专门的 `/health` 路由 | 新增无敏感信息的就绪检查端点，并在 Railway 服务中配置该路径。 |
+| 健康检查 | `GET /health` 仅在 MySQL 私有连接可用时返回 HTTP 200 与 `{ "status": "ok" }`；不可用时返回无细节的 503。 | Railway Healthcheck Path 设置为 `/health`，建议部署超时设置为 300 秒。 |
 | 机密 | `.env` 被 Git 忽略；DeepSeek Key 仅由服务器读取 | `DATABASE_URL` 与 `DEEPSEEK_API_KEY` 在 Railway Variables 中设置，建议对 DeepSeek Key 使用 Seal。 |
 | 同域 | Express 同时服务网页和 API | 仅部署一个 Web Service，避免跨域 Cookie/CORS 与摄像头权限复杂度。 |
 
 ## Railway 临时域名与自定义域名顺序
 
 1. 创建 Railway 项目；从 GitHub 仓库 `Ritadu128/Liuyao-mvp` 创建 Web Service，并在**同一项目**新增 Railway MySQL 服务。
-2. 设置迁移、启动命令和无机密环境变量；由用户在 Railway 后台填写/密封敏感变量。
+2. 设置 Build Command `pnpm install --frozen-lockfile && pnpm build`、Start Command `pnpm start`、Pre-deploy Command `pnpm db:migrate`、Healthcheck Path `/health` 和无机密环境变量；由用户在 Railway 后台填写/密封敏感变量。
 3. 在 Web Service 的 Networking 中选择 **Generate Domain**，获得 `*.up.railway.app` 临时域名并完成部署测试。
 4. 通过 Railway 临时域名验证首页、匿名占卜、数据库迁移、限流、法律页、导出、AI 未配置降级和 HTTPS。
 5. 在 Railway Web Service 的 Networking 中新增 Custom Domain：`liuyao.win`。Railway 会给出一条精确的 CNAME 目标与一条精确的 TXT 所有权验证记录。

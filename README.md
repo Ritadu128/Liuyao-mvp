@@ -197,7 +197,7 @@ pnpm db:push
 | 变量 | 是否必需 | 说明 |
 |---|---|---|
 | `NODE_ENV` | 否 | `development` 或 `production`。 |
-| `PORT` | 否 | Express 端口，默认 `3000`。 |
+| `PORT` | 生产环境必需 | Railway 自动注入；生产环境必须严格监听该值。本地开发缺失或无效时默认 `3000`。 |
 | `DATABASE_URL` | 是 | MySQL URL；后端限流依赖它。 |
 | `DEEPSEEK_API_KEY` | 真实解读必需 | 仅服务器读取；当前项目等待新的有效 Key。 |
 | `DEEPSEEK_MODEL` | 否 | 默认 `deepseek-chat`。 |
@@ -298,7 +298,7 @@ pnpm install --frozen-lockfile
 # 类型检查
 pnpm check
 
-# Vitest：当前 8 个测试文件、42 项测试
+# Vitest：当前 9 个测试文件、44 项测试
 pnpm test
 
 # 生产构建
@@ -311,7 +311,7 @@ NODE_ENV=production PORT=3000 pnpm start
 pnpm audit --prod --audit-level=low
 ```
 
-现有自动化测试覆盖六爻算法、固定卦、匿名权限边界、未配置 Key、限流原子语义、长图画布缩放、HTTP 安全头、同源写保护、畸形 JSON、登出 Cookie 清理，以及 Railway 数据库就绪健康检查。
+现有自动化测试覆盖六爻算法、固定卦、匿名权限边界、未配置 Key、限流原子语义、长图画布缩放、HTTP 安全头、同源写保护、畸形 JSON、登出 Cookie 清理、Railway 数据库就绪健康检查，以及生产/开发端口选择策略。
 
 ### 简单稳定的部署方案
 
@@ -329,7 +329,7 @@ pnpm audit --prod --audit-level=low
 
 服务端新增 `GET /health`。它只返回 `{ "status": "ok" }` 或 `{ "status": "unavailable" }`，不泄露数据库连接、错误详情或任何 Secret；只有 MySQL 私有连接可用时才返回 HTTP 200。Railway 将在切换每一次新部署流量前检查此端点，因此生产迁移失败或数据库不可达时不会被误判为可用。
 
-Railway Web Service 使用 `pnpm install --frozen-lockfile && pnpm build` 构建、`pnpm db:migrate` 作为部署前迁移、`pnpm start` 启动，并在平台注入的 `PORT` 上监听。Web Service 的 `DATABASE_URL` 必须引用**同一 Railway 项目**中 MySQL 服务的私有 `MYSQL_URL`；不得为了连接应用而开启 MySQL Public Access。`DEEPSEEK_API_KEY` 由作者在 Railway Variables 中设置并 Seal，不能写入 Git、构建日志或 `VITE_*` 变量。
+Railway Web Service 使用 `pnpm install --frozen-lockfile && pnpm build` 构建、`pnpm db:migrate` 作为部署前迁移、`pnpm start` 启动，并在平台注入的 `PORT` 上**严格监听**。生产端口缺失、无效或已被占用时服务会失败，而不会改用相邻端口；这可避免 Railway 健康检查与实际监听端口不一致。Web Service 的 `DATABASE_URL` 必须引用**同一 Railway 项目**中 MySQL 服务的私有 `MYSQL_URL`；不得为了连接应用而开启 MySQL Public Access。`DEEPSEEK_API_KEY` 由作者在 Railway Variables 中设置并 Seal，不能写入 Git、构建日志或 `VITE_*` 变量。
 
 先在 Railway 为 Web Service 生成 `*.up.railway.app` 临时域名，并完成部署测试。随后在 Railway 添加 `liuyao.win` Custom Domain；**必须以 Railway 面板实际生成的值为准**，在 Cloudflare 添加对应 CNAME 和 TXT 所有权验证记录，不能预先猜测记录。Cloudflare 代理开启时，将 SSL/TLS 设为 `Full`，并保持 Universal SSL 开启；绑定过程和精确记录见 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。
 
