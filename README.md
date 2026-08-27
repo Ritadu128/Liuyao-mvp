@@ -32,7 +32,7 @@
 | 原仓库可确认 | React/tRPC/Drizzle 架构、六爻计算、64 卦静态经文、Three.js 硬币、MediaPipe 手势基础、结果页两类解读。 | 已保留并在当前基线上修复。 |
 | 本次重建第一阶段 | 可安装/启动/构建/测试、同域 Express、MySQL 迁移、匿名 localStorage 历史、后端每日 IP 限额、DeepSeek 安全调用、手势状态机。 | 已实现；真实 DeepSeek 和真实摄像头真机验收待完成。 |
 | 本轮补充需求 | 两类解读分别导出长图、原生分享/PNG 下载降级、随喜占位、隐私/免责声明网页、安全审计与整改。 | 已实现代码与测试；真实 AI 内容下的端到端导出、移动分享和真机摄像头仍需验收。 |
-| Railway 上线准备 | Railway 健康检查、构建/启动/迁移方案、MySQL 备份与支出提醒计划，及 Cloudflare 域名绑定顺序。 | 已完成代码和文档准备；Railway 项目、MySQL、Secrets、临时域名及正式 DNS 由用户本人账户操作后再验证。 |
+| Railway 上线与域名 | Railway 健康检查、构建/启动/迁移、同项目私有 MySQL、自动部署、临时域名、Cloudflare DNS 与正式域名绑定。 | 已在用户本人 Railway、GitHub 与 Cloudflare 账户中完成并通过健康检查；备份、成本上限和 DeepSeek Secret 仍有计划/账户边界。详见 `RAILWAY_LIVE_STATUS.md`。 |
 
 ## 核心功能与用户流程
 
@@ -47,7 +47,7 @@
 | 两类 AI 解读 | **综合解读**与**卦象解读**分别由服务器返回结构化字段。 | 无 Key 的受控降级已验证；真实成功响应待新 Key。 |
 | 匿名历史 | 浏览器 localStorage，刷新或重新打开同一浏览器后可见，最多 30 条。 | 已实现。 |
 | 长图导出 | 每个解读页签独立导出问题、卦象、卦名、动爻、相关经文、解读及简短提示。 | 代码、缩放单元测试和构建已通过；真实长内容/手机分享待验收。 |
-| 随喜 | 两个解读模块底部均有微信、支付宝和 Ko-fi 的明确占位。 | 布局已实现，等待作者素材。 |
+| 随喜 | 两个解读模块底部均有按需展示的微信、支付宝收款码和安全的 Ko-fi 外链。 | 作者明确授权的公开素材已接入；桌面/手机实际扫码与外链验收待完成。 |
 | 法律页面 | `/privacy` 与 `/disclaimer`，全站免责声明组件提供入口。 | 已实现。 |
 
 ## 系统架构与实际数据流
@@ -88,7 +88,8 @@ Liuyao-mvp/
 │   ├── index.html                         # HTML、字体与元信息
 │   ├── public/
 │   │   ├── assets/                        # 铜钱贴图
-│   │   └── data/                          # 64 卦映射和经文 JSON
+│   │   ├── data/                          # 64 卦映射和经文 JSON
+│   │   └── support/                       # 作者明确授权公开的微信、支付宝收款码
 │   └── src/
 │       ├── App.tsx                        # 页面路由
 │       ├── components/
@@ -96,7 +97,7 @@ Liuyao-mvp/
 │       │   ├── GestureThrowPanel.tsx      # 摄像头/手势状态 UI
 │       │   ├── ReadingExport.tsx          # 长图生成、分享和下载降级
 │       │   ├── SafeMarkdown.tsx           # 禁用原始 HTML 的模型输出渲染
-│       │   ├── SupportAuthor.tsx          # 随喜资源占位
+│       │   ├── SupportAuthor.tsx          # 随喜按钮、二维码按需展示与 Ko-fi 外链
 │       │   └── ScrollUI.tsx               # 书卷组件、政策入口
 │       ├── hooks/                         # 手势、经文与 localStorage 历史
 │       ├── lib/
@@ -203,8 +204,8 @@ pnpm db:push
 | `DEEPSEEK_MODEL` | 否 | 默认 `deepseek-chat`。 |
 | `DEEPSEEK_TIMEOUT_MS` | 否 | 服务器钳制到 3000–60000ms，默认 20000ms。 |
 | `TRUST_PROXY` | 可信反向代理时必需 | 只有 Node 位于可信代理后时设 `true`。 |
-| `VITE_CONTACT_EMAIL` | 上线前建议配置 | 公开展示的项目联系邮箱；为空时显示“待提供正式联系邮箱”。 |
-| `VITE_KOFI_URL` | 获得作者链接后配置 | 仅接受 `https://` URL；为空时显示明确占位。 |
+| `VITE_CONTACT_EMAIL` | 否 | 公开展示的联系邮箱；当前默认值为作者授权的公开邮箱，部署时可覆盖。 |
+| `VITE_KOFI_URL` | 否 | 仅接受 `https://` URL；当前默认值为作者授权的 Ko-fi 页面，部署时可覆盖。 |
 | `JWT_SECRET`、`VITE_APP_ID`、`OAUTH_SERVER_URL` 等 | 否 | 未来 OAuth 预留；匿名版不需要。 |
 
 ## DeepSeek 服务端解读
@@ -259,19 +260,15 @@ pnpm db:push
 
 ## 随喜支持作者
 
-两个解读模块底部都显示“如果这个项目对你有帮助，欢迎随喜支持作者。完全自愿，不影响任何功能使用。”区域。当前微信与支付宝区域是明显的**待提供收款码**占位，Ko-fi 是**待提供链接**占位；不会生成或虚构任何收款码、账户或外部收款页。
+两个解读模块底部都显示“如果这个项目对你有帮助，欢迎随喜支持作者。完全自愿，不影响任何功能使用。”区域。作者已明确授权的微信与支付宝收款码位于 `client/public/support/`，Ko-fi 公开地址和联系邮箱由 `publicConfig.ts` 提供默认值；它们均可由公开的 `VITE_*` 构建变量覆盖。
 
-作者提供素材后：
-
-1. 将微信、支付宝二维码文件放入受版本控制的公开静态资源目录，并在 `SupportAuthor.tsx` 指向对应文件；只使用作者明确授权公开的二维码。
-2. 在部署环境或构建环境设置 `VITE_KOFI_URL=https://...`。组件仅为有效 HTTPS URL 输出 `target="_blank" rel="noopener noreferrer"` 安全外链。
-3. 通过桌面与手机测试二维码清晰度、触控区域、外链跳转和不遮挡解读文本。
+为避免默认展示支付方式，组件初始只显示“显示微信收款码”与“显示支付宝收款码”按钮；用户点击其中一种后才按需加载对应二维码，再次点击可收起。Ko-fi 仅使用有效 HTTPS 地址，并输出 `target="_blank" rel="noopener noreferrer"` 安全外链。随喜区域带有 `data-export-ignore`，不会进入两类解读导出的长图。仍需在桌面和手机上完成二维码清晰度、实际扫码、触控区域和外链跳转验收。
 
 ## 隐私政策与免责声明
 
-网页底部及结果附近都有政策入口：`/privacy` 为《隐私政策》，`/disclaimer` 为《免责声明》。政策以当前真实数据流为准，明确说明：问题/卦象/经文会在解读时传至服务器和 DeepSeek；匿名历史在 localStorage；服务器处理 IP 限额；摄像头在本地端处理；以及 Google Fonts、MediaPipe/jsDelivr、DeepSeek 和未来 Ko-fi 的第三方边界。
+网页底部及结果附近都有政策入口：`/privacy` 为《隐私政策》，`/disclaimer` 为《免责声明》。政策以当前真实数据流为准，明确说明：问题/卦象/经文会在解读时传至服务器和 DeepSeek；匿名历史在 localStorage；服务器处理 IP 限额；摄像头在本地端处理；以及 Google Fonts、MediaPipe/jsDelivr、DeepSeek 和 Ko-fi 的第三方边界。
 
-正式部署前必须设置公开 `VITE_CONTACT_EMAIL`，并在隐私政策页面确认数据保留期限、删除请求处理渠道和当前服务商清单仍然准确。政策页面的“最后更新”日期当前为 2026-08-27；每次实质性数据流变更都应更新它。
+作者已提供公开联系邮箱，政策页面会通过 `PUBLIC_CONFIG` 显示它。每次实质性数据流、第三方服务或联系渠道变化都应复核数据保留期限、删除请求处理渠道和服务商清单；政策页面当前最后更新日期为 2026-08-28。
 
 ## 安全审计与加固
 
@@ -317,7 +314,7 @@ pnpm audit --prod --audit-level=low
 
 建议使用**单一 Node 22 服务 + 托管 MySQL + HTTPS 反向代理或支持 Node 的托管平台**。该方案前后端同域，避免 CORS、跨站 Cookie 与摄像头权限问题。
 
-> **当前生产目标：** 用户已注册 `liuyao.win` 并由本人 Cloudflare 账户管理。项目采用 Railway 的一个项目承载一个 GitHub Web Service 与一个私有 MySQL 服务；详细操作与账户边界见 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。尚未创建 Railway 项目或服务，不能将本段视为已上线。
+> **当前生产状态：** `https://liuyao.win` 已在用户本人 Cloudflare 账户和 Railway 项目中完成绑定。一个 Railway GitHub Web Service 与一个同项目私有 MySQL 服务均在线，持续部署、迁移与 `/health` 已通过；非敏感验证记录见 [RAILWAY_LIVE_STATUS.md](./RAILWAY_LIVE_STATUS.md)。
 
 1. 部署平台以服务器 Secret 配置 `DATABASE_URL`、`DEEPSEEK_API_KEY` 和生产公开元数据；不要把秘密设为构建时 `VITE_*`。
 2. CI/CD 使用 `pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test`、`pnpm build`；由受控迁移账户执行 `pnpm db:migrate`。
@@ -331,22 +328,20 @@ pnpm audit --prod --audit-level=low
 
 Railway Web Service 使用 `pnpm install --frozen-lockfile && pnpm build` 构建、`pnpm db:migrate` 作为部署前迁移、`pnpm start` 启动，并在平台注入的 `PORT` 上**严格监听**。生产端口缺失、无效或已被占用时服务会失败，而不会改用相邻端口；这可避免 Railway 健康检查与实际监听端口不一致。Web Service 的 `DATABASE_URL` 必须引用**同一 Railway 项目**中 MySQL 服务的私有 `MYSQL_URL`；不得为了连接应用而开启 MySQL Public Access。`DEEPSEEK_API_KEY` 由作者在 Railway Variables 中设置并 Seal，不能写入 Git、构建日志或 `VITE_*` 变量。
 
-先在 Railway 为 Web Service 生成 `*.up.railway.app` 临时域名，并完成部署测试。随后在 Railway 添加 `liuyao.win` Custom Domain；**必须以 Railway 面板实际生成的值为准**，在 Cloudflare 添加对应 CNAME 和 TXT 所有权验证记录，不能预先猜测记录。Cloudflare 代理开启时，将 SSL/TLS 设为 `Full`，并保持 Universal SSL 开启；绑定过程和精确记录见 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。
+已先在 Railway 临时 `*.up.railway.app` 域名完成验收，之后才添加 `liuyao.win` Custom Domain。Cloudflare 根域 CNAME 与 Railway TXT 所有权验证记录均以 Railway 面板实际生成值为准；当前根域已启用橙云代理，Cloudflare SSL/TLS 模式为 `Full`。非敏感的实时绑定与验收记录见 [RAILWAY_LIVE_STATUS.md](./RAILWAY_LIVE_STATUS.md)。
 
-Railway MySQL 应优先启用平台原生 Backups，并确认保留期与恢复办法。用户还需在 Railway Workspace Usage 设置邮件软提醒及是否启用硬上限；硬上限会使工作负载离线，应由用户自行决定金额。完整备份/支出运维方案和每个用户操作步骤均已写入 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。
+Railway MySQL 原生 Backups/PITR 在当前 Trial 工作区仅对 Pro 计划可用，故 7 天保留期尚不能启用；不得自行升级或开放数据库公网访问。用户拟定的 Workspace Compute Usage 软提醒 `$10`、硬上限 `$20` 亦需升级/支付方式后才可设置。硬上限会使工作负载离线，仍应由用户本人决定。完整备份/支出运维方案见 [RAILWAY_DEPLOYMENT_PLAN.md](./RAILWAY_DEPLOYMENT_PLAN.md)。
 
 ## 素材、验收与待确认事项
 
 | 待提供/待确认项 | 当前默认行为 | 后续动作 |
 |---|---|---|
-| DeepSeek API Key | 无 Key 时安全降级且不扣额度。 | 由作者在服务器 `.env`/Secret 写入轮换后的新 Key；进行一次最小真实解读验收。 |
-| 微信二维码 | 显示“待作者提供收款码”占位。 | 提供公开且可使用的图片文件。 |
-| 支付宝二维码 | 显示“待作者提供收款码”占位。 | 提供公开且可使用的图片文件。 |
-| Ko-fi 链接 | 显示“待作者提供链接”占位。 | 提供正式 HTTPS 链接。 |
-| 联系邮箱 | 显示“待提供正式联系邮箱”。 | 提供公开联系邮箱并写入 `VITE_CONTACT_EMAIL`。 |
-| Railway 与 MySQL | Railway 项目尚未创建；部署健康检查与操作清单已完成。 | 使用本人 GitHub 登录 Railway，创建同项目 Web Service 和 MySQL；再填写 Railway Secret/引用变量。 |
-| 临时/正式域名 | `liuyao.win` 已由用户购买并在 Cloudflare 激活，但尚未绑定生产服务。 | 先发送 Railway `*.up.railway.app` 临时域名进行测试；确认后再按 Railway 实际值添加 Cloudflare CNAME/TXT。 |
-| 备份与支出提醒 | 已有原生 Backups 优先、独立加密备份备选和预算提醒方案。 | 由用户确认 Railway 原生备份可用性、告警邮箱、软提醒金额、硬上限及独立备份需求。 |
+| DeepSeek API Key | 无 Key 时安全降级且不扣额度；先前误发到聊天的 Key 已由作者撤销。 | 作者仅在 Railway Secret 页面本人填入一枚全新的 Key；进行一次最小真实解读验收。 |
+| 微信/支付宝二维码 | 作者授权的公开二维码已放入 `client/public/support/`，默认不展示，点击对应按钮后加载。 | 在桌面与手机实际扫码验收，确认二维码仍可用后再长期保留。 |
+| Ko-fi 链接与联系邮箱 | 已接入作者提供的公开 HTTPS Ko-fi 地址与联系邮箱。 | 上线后复核外链目标、政策文案与联系渠道。 |
+| Railway 与 MySQL | 同一 Railway 项目内的 Web Service 与私有 MySQL 已上线；迁移、`/health` 与 GitHub 自动部署已实测。 | 保持数据库私有；更新依赖或 Schema 后观察自动部署和迁移日志。 |
+| 临时/正式域名 | Railway 临时域名保留；`liuyao.win` 已绑定 Railway 且经 Cloudflare 橙云代理，SSL/TLS 为 `Full`。 | 在正式域名完成手机摄像头、二维码、导出和分享验收。 |
+| 备份与支出提醒 | 当前 Railway Trial 不提供 MySQL Backups/PITR；现有 `$5` 试用额度耗尽会自动停止服务。 | 若用户自行升级计划，再启用 7 天原生备份，并设置 `$10` 软提醒与 `$20` Compute 硬上限。 |
 | 真机验收 | 当前仅验证无摄像头错误路径及自动化逻辑。 | 使用 HTTPS 手机/桌面完成手势、导出和原生分享验收。 |
 
 ## 参考资料

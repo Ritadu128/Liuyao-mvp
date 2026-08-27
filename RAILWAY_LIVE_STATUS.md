@@ -16,7 +16,8 @@
 | 构建器 | Railway Settings 显示默认 Railpack 与 `node@24.19.0`。 | 首次构建成功；后续仍会显式配置项目锁定的 pnpm 安装/构建命令。 |
 | 私有网络 | UI 显示候选内部端点 `liuyao-mvp.railway.internal`。 | 没有提交任何端点名称改动；数据库仍应仅用项目私有引用变量连接。 |
 | GitHub 源状态 | Railway Source 设置现显示 `Ritadu128/Liuyao-mvp` 与 `main` 分支，先前的 `GitHub Repo not found` 红色提示已消失。 | 来源恢复后已审阅待应用变更，发现其“新值为空”会删除来源，故已安全丢弃；当前为 0 项待应用变更。 |
-| 自动部署实测 | 先前空提交 `9f9371f` 未触发部署；重新检查确认当时 Railway 的 `Auto deploy` 开关处于关闭状态。 | 用户确认后已开启 `Auto deploys when pushed to GitHub`；来源连接与自动部署现已处于启用状态，但仍需以一个真实内容变更的 Git 推送复验。 |
+| 自动部署实测 | 先前空提交 `9f9371f` 未触发部署；重新检查确认当时 Railway 的 `Auto deploy` 开关处于关闭状态。 | 用户确认后已开启 `Auto deploys when pushed to GitHub`，随后 `main` 的真实文档提交 `9f68aae` 自动创建 Railway 部署并已成功切流。 |
+| 自动部署后健康检查 | 自动触发的新活动版本成功完成 Railway 部署流程；从独立网络路径再次访问 `/health` 返回 `200 {"status":"ok"}`。 | 已端到端验证 GitHub 推送 → Railway 构建/迁移/健康检查 → 公网应用与私有 MySQL 就绪。 |
 | Railway GitHub App | 用户提供的 GitHub 设置截图显示 `Only select repositories`，且唯一被选择的仓库为 `Ritadu128/Liuyao-mvp`；用户已确认点击 Save。 | 这是当前最直接的授权证据。沙箱中的 GitHub CLI 使用的是受限集成令牌，对安装与 Webhook 查询返回 401/403，不能用其错误推断用户的 Railway App 授权无效。 |
 | 已应用生产配置 | 用户确认后已提交 8 项变更：有效 EU West 单副本、`DATABASE_URL=${{MySQL.MYSQL_URL}}`、`TRUST_PROXY=true`、锁定构建命令、`pnpm start`、`pnpm db:migrate` 与 `/health`。 | 未启用 Public Access、TCP Proxy、备份、预算控制或任何 DeepSeek/支付/Cloudflare 配置。 |
 | 数据库引用 | 已新增服务变量 `DATABASE_URL`，值在 Railway UI 中保持掩码，来源为 `${{MySQL.MYSQL_URL}}` 私有引用。 | 已随成功部署应用；未读取、复制或记录数据库密码。 |
@@ -24,7 +25,8 @@
 | 启动命令 | 已设置 `pnpm start`。 | 已随重新部署提交；该命令会以生产模式执行已验证的 Node 入口。 |
 | 部署前迁移 | 已设置 `pnpm db:migrate`。 | 已随重新部署提交；Railway 会在新应用版本切流前执行已提交的 Drizzle 迁移。 |
 | 重新部署状态 | 新部署 `3a664098` 已为 `Active`，Web Service 与 MySQL 均为 Online。 | 已通过 Railway 部署流程。 |
-| 临时公网域名 | 已生成 `https://liuyao-mvp-production.up.railway.app`，目标端口为平台注入的 8080。 | 仅用于正式域名绑定前的验收；尚未触碰 Cloudflare DNS。 |
+| 临时公网域名 | 已生成 `https://liuyao-mvp-production.up.railway.app`，目标端口为平台注入的 8080。 | 用于正式域名绑定前的验收，保留为回退访问地址。 |
+| Railway 自定义域名 | 已在 Railway 添加 `liuyao.win`，目标端口为 8080；用户在 Cloudflare 保存了精确 CNAME 与 TXT（根域 CNAME 为橙云代理，验证 TXT 为 DNS only）。 | Railway 完成 DNS 验证和路由后，从独立网络路径访问 `https://liuyao.win/health` 已返回 `200 {"status":"ok"}`，正式域名可用。根域通过 Cloudflare 代理/扁平化，CNAME 类型查询没有直接 Answer 属正常现象。 |
 | 公网健康检查 | 从独立网络路径访问 `/health` 返回 HTTP 200 与 `{"status":"ok"}`。 | 已端到端确认 HTTPS、应用进程及私有 MySQL 就绪；响应未泄露数据库细节。 |
 | 安全头抽检 | 临时域名首页和 `/health` 均返回 CSP、HSTS、`X-Content-Type-Options: nosniff`、`Referrer-Policy` 与摄像头限制的 Permissions-Policy。 | 仅为部署后抽检，不构成第三方安全认证。 |
 | 无 DeepSeek Key 行为 | 对 `reading.generate` 的有效格式请求返回 HTTP 412 / `PRECONDITION_FAILED` 与“解读服务尚未配置，请稍后再试。”；响应设置 `Cache-Control: no-store`。 | 已验证不会因缺少 Key 暴露配置细节；代码在该检查后才执行 IP 额度递增，因此该测试不消耗 IP 限额且未调用外部模型。 |
@@ -34,4 +36,4 @@
 | 公开路由与 HTTPS | `/`、`/privacy`、`/disclaimer`、`/health` 均为 HTTPS HTTP 200；HTTP 根路径返回 301 到 HTTPS。 | 已覆盖首页、法务入口与健康端点的基础可达性；未对用户的本地摄像头、移动分享和完整投掷流程作真机验收。 |
 | 迁移与启动验证 | Deploy Logs 显示 `pnpm db:migrate`、`drizzle-kit migrate`、`migrations applied successfully!`，随后 `pnpm start` 以生产模式启动并监听平台端口 8080。 | 已验证本次部署的 MySQL 迁移与应用启动；Railway 将 `/health` 配置纳入部署流程，部署已被平台标记成功。 |
 
-> 本记录不包含任何密码、Token、数据库连接串、API Key 或私有日志内容。临时域名已完成公开可达、数据库就绪、法务路由、HTTPS 重定向、无 DeepSeek Key 受控响应、跨站写入拒绝与 tRPC 输入校验抽检；GitHub 最小授权、仓库可见性和自动部署开关均已恢复，仍需以一个真实内容变更的 Git 推送复验。真机摄像头/分享、备份、成本控制和 `liuyao.win` 自定义域名仍需用户确认；DeepSeek Secret 仍需用户本人填写。
+> 本记录不包含任何密码、Token、数据库连接串、API Key 或私有日志内容。临时域名已完成公开可达、数据库就绪、法务路由、HTTPS 重定向、无 DeepSeek Key 受控响应、跨站写入拒绝与 tRPC 输入校验抽检；GitHub 最小授权、仓库可见性和自动部署开关已恢复，且已由真实文档提交成功复验。`liuyao.win` 已完成 Railway/Cloudflare 配置并通过正式 HTTPS 健康检查；真机摄像头/分享、备份、成本控制以及由用户本人填写新的 DeepSeek Secret 仍待完成。
