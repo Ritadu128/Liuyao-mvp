@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Hand, X } from 'lucide-react';
 import type { GestureStatus } from '@/hooks/useGestureThrow';
 
@@ -30,6 +31,20 @@ export function GestureThrowIndicator({
   lastGesture,
   disabled = false,
 }: GestureThrowIndicatorProps) {
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setLoadingSeconds(Math.floor((Date.now() - startedAt) / 1_000));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [isLoading]);
+
   if (!gestureEnabled && !isLoading && !error) return null;
 
   const config = STATUS_CONFIG[status];
@@ -37,7 +52,7 @@ export function GestureThrowIndicator({
     ? error
     : isLoading
       ? cameraActive
-        ? '摄像头已开启 · 正在准备手势识别…'
+        ? `摄像头已开启 · 正在准备手势识别（${loadingSeconds}秒）`
         : '正在请求并启动摄像头…'
       : disabled && status === 'READY'
         ? '投掷动画进行中…'
@@ -107,6 +122,12 @@ export function GestureThrowIndicator({
               transition: isCharging ? 'none' : 'width 160ms ease-out',
             }}
           />
+        </div>
+      )}
+
+      {isLoading && cameraActive && (
+        <div style={{ marginTop: '5px', fontSize: '9px', color: 'rgba(90,62,20,0.52)', textAlign: 'center' }}>
+          首次需加载约 20 MB，完成后将自动缓存
         </div>
       )}
 

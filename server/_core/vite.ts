@@ -58,6 +58,26 @@ export function serveStatic(app: Express) {
     );
   }
 
+  // MediaPipe runtime/model paths are versioned by the client. Keep these large,
+  // immutable assets in the browser cache so gesture startup is fast after the
+  // first download instead of revalidating ~20 MB on every visit.
+  const mediapipePath = path.resolve(distPath, "mediapipe");
+  app.use(
+    "/mediapipe",
+    express.static(mediapipePath, {
+      immutable: true,
+      maxAge: "365d",
+      setHeaders(res, filePath) {
+        // The versioned Wasm binaries use a .bin URL so Cloudflare's default
+        // static-extension cache can store them. Preserve the MIME required by
+        // WebAssembly.instantiateStreaming().
+        if (filePath.endsWith("_internal.bin")) {
+          res.setHeader("Content-Type", "application/wasm");
+        }
+      },
+    })
+  );
+
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist

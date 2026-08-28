@@ -17,11 +17,68 @@ const CONFIG = {
   cooldownTime: 800,
   handLostTimeout: 1_200,
   cameraReadyTimeout: 12_000,
+  gpuDelegateTimeout: 15_000,
   modelReadyTimeout: 45_000,
 };
 
-const MEDIAPIPE_WASM_PATH = '/mediapipe/wasm';
-const GESTURE_MODEL_PATH = '/mediapipe/gesture_recognizer.task';
+const MEDIAPIPE_ASSET_PATH = '/mediapipe/v0.10.32';
+const MEDIAPIPE_WASM_PATH = `${MEDIAPIPE_ASSET_PATH}/wasm`;
+const GESTURE_MODEL_PATH = `${MEDIAPIPE_ASSET_PATH}/gesture_recognizer.bin`;
+
+type GestureWasmFileset = {
+  wasmLoaderPath: string;
+  wasmBinaryPath: string;
+};
+
+type PreloadedGestureAssets = {
+  modelBuffer: Uint8Array | null;
+  wasmFileset: GestureWasmFileset;
+};
+
+function getWasmFileset(runtimeStem: string): GestureWasmFileset {
+  return {
+    wasmLoaderPath: `${MEDIAPIPE_WASM_PATH}/${runtimeStem}.js`,
+    wasmBinaryPath: `${MEDIAPIPE_WASM_PATH}/${runtimeStem}.bin`,
+  };
+}
+
+const FALLBACK_WASM_FILESET = getWasmFileset('vision_wasm_nosimd_internal');
+
+async function fetchAsset(url: string, signal: AbortSignal): Promise<ArrayBuffer> {
+  const response = await fetch(url, { cache: 'force-cache', signal });
+  if (!response.ok) throw new Error(`Failed to preload ${url}: HTTP ${response.status}`);
+  return response.arrayBuffer();
+}
+
+async function preloadGestureAssets(signal: AbortSignal): Promise<PreloadedGestureAssets> {
+  try {
+    const hasSimd = await FilesetResolver.isSimdSupported();
+    const runtimeStem = hasSimd ? 'vision_wasm_internal' : 'vision_wasm_nosimd_internal';
+    const wasmFileset = getWasmFileset(runtimeStem);
+    const [modelResult, wasmResult, loaderResult] = await Promise.allSettled([
+      fetchAsset(GESTURE_MODEL_PATH, signal),
+      fetchAsset(wasmFileset.wasmBinaryPath, signal),
+      fetchAsset(wasmFileset.wasmLoaderPath, signal),
+    ]);
+
+    for (const result of [wasmResult, loaderResult]) {
+      if (result.status === 'rejected' && !signal.aborted) {
+        console.warn('[GestureThrow] Runtime preload skipped; MediaPipe will retry normally.', result.reason);
+      }
+    }
+    if (modelResult.status === 'rejected' && !signal.aborted) {
+      console.warn('[GestureThrow] Model preload skipped; MediaPipe will retry normally.', modelResult.reason);
+    }
+
+    return {
+      modelBuffer: modelResult.status === 'fulfilled' ? new Uint8Array(modelResult.value) : null,
+      wasmFileset,
+    };
+  } catch (error) {
+    if (!signal.aborted) console.warn('[GestureThrow] Asset preload skipped.', error);
+    return { modelBuffer: null, wasmFileset: FALLBACK_WASM_FILESET };
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -117,6 +174,7 @@ export function useGestureThrow(
   const onThrowRef = useRef(onThrow);
   const disabledRef = useRef(disabled);
   const startSessionRef = useRef(0);
+  const preloadAbortRef = useRef<AbortController | null>(null);
 
   const stateRef = useRef({
     status: 'IDLE' as GestureStatus,
@@ -292,6 +350,8 @@ export function useGestureThrow(
 
   const stop = useCallback(() => {
     startSessionRef.current += 1;
+    preloadAbortRef.current?.abort();
+    preloadAbortRef.current = null;
     setGestureEnabled(false);
     setCameraActive(false);
     setIsLoading(false);
@@ -319,6 +379,12 @@ export function useGestureThrow(
     updateStatus('IDLE');
     releaseCamera();
     const session = ++startSessionRef.current;
+    preloadAbortRef.current?.abort();
+    const preloadController = new AbortController();
+    preloadAbortRef.current = preloadController;
+    // Start the two large downloads together while the user handles the camera
+    // permission prompt. The model buffer is then reused during initialization.
+    const preloadPromise = preloadGestureAssets(preloadController.signal);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -344,23 +410,24 @@ export function useGestureThrow(
           setError('摄像头连接已中断。请检查设备后重新启动手势投掷。');
         }, { once: true });
       });
+      const { modelBuffer, wasmFileset } = await preloadPromise;
+      if (preloadAbortRef.current === preloadController) preloadAbortRef.current = null;
+      if (session !== startSessionRef.current) return;
 
       if (!recognizerRef.current) {
-        const vision = await withTimeout(
-          FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_PATH),
-          CONFIG.modelReadyTimeout,
-          'GESTURE_MODEL_TIMEOUT',
-        );
+        const vision = wasmFileset;
         let recognizer: GestureRecognizer | null = null;
         for (const delegate of ['GPU', 'CPU'] as const) {
           try {
             recognizer = await withTimeout(
               GestureRecognizer.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: GESTURE_MODEL_PATH, delegate },
+                baseOptions: modelBuffer
+                  ? { modelAssetBuffer: modelBuffer.slice(), delegate }
+                  : { modelAssetPath: GESTURE_MODEL_PATH, delegate },
                 runningMode: 'VIDEO',
                 numHands: 1,
               }),
-              CONFIG.modelReadyTimeout,
+              delegate === 'GPU' ? CONFIG.gpuDelegateTimeout : CONFIG.modelReadyTimeout,
               'GESTURE_MODEL_TIMEOUT',
             );
             break;
@@ -387,6 +454,8 @@ export function useGestureThrow(
       if (session !== startSessionRef.current) return;
       console.error('[GestureThrow] start error:', startError);
       startSessionRef.current += 1;
+      preloadController.abort();
+      if (preloadAbortRef.current === preloadController) preloadAbortRef.current = null;
       setError(getCameraErrorMessage(startError));
       setGestureEnabled(false);
       setCameraActive(false);
@@ -400,6 +469,8 @@ export function useGestureThrow(
 
   useEffect(() => () => {
     startSessionRef.current += 1;
+    preloadAbortRef.current?.abort();
+    preloadAbortRef.current = null;
     cancelAnimationFrame(rafIdRef.current);
     clearTimeout(stateRef.current.cooldownTimer as number);
     releaseCamera();
