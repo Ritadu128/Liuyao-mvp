@@ -8,6 +8,7 @@ import { ENV } from "./env";
 import { serveStatic, setupVite } from "./vite";
 import { applySecurityHeaders, enforceSameOriginApiMutations, handleMalformedJson } from "./security";
 import { createHealthHandler } from "./health";
+import { handleReadingStream } from "../routers/reading";
 import {
   findAvailableDevelopmentPort,
   getDevelopmentPreferredPort,
@@ -34,6 +35,11 @@ async function startServer() {
   } else {
     console.info("[OAuth] Disabled: anonymous mode is active.");
   }
+  // 模型增量内容使用标准 fetch 流式返回；独立于 tRPC 的整包 JSON 响应。
+  app.post("/api/reading/stream", enforceSameOriginApiMutations, async (req, res) => {
+    const ctx = await createContext({ req, res });
+    await handleReadingStream(req, res, ctx);
+  });
   // tRPC API
   app.use(
     "/api/trpc",

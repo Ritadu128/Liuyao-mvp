@@ -9,6 +9,6 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
   deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
-  deepseekTimeoutMs: process.env.DEEPSEEK_TIMEOUT_MS ?? "20000",
+  deepseekTimeoutMs: process.env.DEEPSEEK_TIMEOUT_MS ?? "60000",
   trustProxy: process.env.TRUST_PROXY === "true",
 };

@@ -1,13 +1,21 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { desc, eq, sql } from 'drizzle-orm';
+import type { Request, Response } from 'express';
 import { publicProcedure, router } from '../_core/trpc';
+import type { TrpcContext } from '../_core/context';
 import { ENV } from '../_core/env';
 import { getDb } from '../db';
 import { ipRateLimits, readings } from '../../drizzle/schema';
+import {
+  DeepSeekStreamError,
+  streamDeepSeekReading,
+  type ReadingSection,
+  type StreamedReading,
+} from '../readingStream';
 
 const DAILY_LIMIT = 10;
-const DEFAULT_DEEPSEEK_TIMEOUT_MS = 20_000;
+const DEFAULT_DEEPSEEK_TIMEOUT_MS = 60_000;
 
 function getTodayDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -224,10 +232,166 @@ ${yaoCiBlock}
 
 function getDeepSeekError(error: unknown): TRPCError {
   if (error instanceof TRPCError) return error;
-  if (error instanceof DeepSeekRequestError && error.kind === 'timeout') {
+  if ((error instanceof DeepSeekRequestError || error instanceof DeepSeekStreamError) && error.kind === 'timeout') {
     return new TRPCError({ code: 'TIMEOUT', message: '解读生成超时，请稍后重试。' });
   }
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: '解读生成失败，请稍后重试。' });
+}
+
+async function saveAuthenticatedReading(
+  input: z.infer<typeof GenerateInputSchema>,
+  ctx: TrpcContext,
+  generated: StreamedReading,
+): Promise<number | null> {
+  // 匿名版本只保存到浏览器；这里保留未来 OAuth 模式的服务端历史能力。
+  if (!ctx.user) return null;
+
+  try {
+    const db = await getDb();
+    if (!db) return null;
+    const [result] = await db.insert(readings).values({
+      userId: ctx.user.id,
+      question: input.question,
+      linesJson: input.linesJson,
+      originalKey: input.originalKey,
+      originalName: input.originalName,
+      originalBits: input.originalBits,
+      changedKey: input.changedKey,
+      changedName: input.changedName,
+      changedBits: input.changedBits,
+      movingLinesJson: JSON.stringify(input.movingLines),
+      integratedReading: generated.integrated_reading,
+      hexagramReading: generated.hexagram_reading,
+    });
+    return (result as { insertId?: number }).insertId ?? null;
+  } catch (error) {
+    console.error('[Reading] Authenticated history save failed:', error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+function getHttpStatus(error: TRPCError): number {
+  switch (error.code) {
+    case 'BAD_REQUEST': return 400;
+    case 'PRECONDITION_FAILED': return 412;
+    case 'TOO_MANY_REQUESTS': return 429;
+    case 'TIMEOUT': return 504;
+    default: return 503;
+  }
+}
+
+function writeSseEvent(res: Response, event: string, payload: unknown) {
+  if (res.writableEnded || res.destroyed) return;
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
+function beginSseResponse(res: Response) {
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  res.write(': connected\n\n');
+}
+
+async function writeDevelopmentMockStream(res: Response) {
+  beginSseResponse(res);
+  const mock: StreamedReading = {
+    integrated_reading: '## 卦象总论\n\n此为本地界面验收内容，用于确认解读会逐步出现，并验证电脑端长图保存。\n\n## 综合建议\n\n保持从容，循序推进。',
+    hexagram_reading: '## 一、经文原文与释义\n\n本地测试释义。\n\n## 二、现代解读\n\n先观察，再行动。\n\n## 三、故事化解读\n\n如舟行水上，顺势调帆。',
+  };
+
+  for (const [section, content] of [
+    ['integrated', mock.integrated_reading],
+    ['hexagram', mock.hexagram_reading],
+  ] as const) {
+    for (let index = 0; index < content.length; index += 3) {
+      writeSseEvent(res, 'delta', { section, text: content.slice(index, index + 3) });
+      await new Promise(resolve => setTimeout(resolve, 120));
+    }
+  }
+  writeSseEvent(res, 'complete', {
+    integratedReading: mock.integrated_reading,
+    hexagramReading: mock.hexagram_reading,
+    readingId: null,
+    remaining: 0,
+  });
+  res.end();
+}
+
+/** 独立的 POST + SSE 接口：让浏览器在模型仍生成时就逐字收到解读。 */
+export async function handleReadingStream(req: Request, res: Response, ctx: TrpcContext) {
+  const parsedInput = GenerateInputSchema.safeParse(req.body);
+  if (!parsedInput.success) {
+    return res.status(400).json({ error: '占卜参数格式无效，请重新起卦。' });
+  }
+  if (process.env.NODE_ENV === 'development' && process.env.MOCK_READING_STREAM === 'true') {
+    await writeDevelopmentMockStream(res);
+    return;
+  }
+  if (!ENV.deepseekApiKey) {
+    return res.status(412).json({ error: '解读服务尚未配置，请稍后再试。' });
+  }
+
+  let rateCheck: { allowed: boolean; remaining: number };
+  try {
+    const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
+    rateCheck = await checkAndIncrementIpLimit(clientIp);
+    if (!rateCheck.allowed) {
+      throw new TRPCError({
+        code: 'TOO_MANY_REQUESTS',
+        message: `今日占卜次数已达上限（每天最多 ${DAILY_LIMIT} 次），明日再来。`,
+      });
+    }
+  } catch (error) {
+    const publicError = error instanceof TRPCError ? error : getDeepSeekError(error);
+    return res.status(getHttpStatus(publicError)).json({ error: publicError.message });
+  }
+
+  beginSseResponse(res);
+
+  const disconnectController = new AbortController();
+  const abortOnDisconnect = () => {
+    if (!res.writableEnded) disconnectController.abort();
+  };
+  res.once('close', abortOnDisconnect);
+
+  try {
+    const generated = await streamDeepSeekReading({
+      apiKey: ENV.deepseekApiKey,
+      model: ENV.deepseekModel,
+      messages: [
+        {
+          role: 'system',
+          content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
+        },
+        { role: 'user', content: buildPrompt(parsedInput.data) },
+      ],
+      timeoutMs: getDeepSeekTimeoutMs(),
+      signal: disconnectController.signal,
+      onDelta: (section: ReadingSection, text: string) => {
+        writeSseEvent(res, 'delta', { section, text });
+      },
+    });
+
+    const validated = DeepSeekReadingSchema.safeParse(generated);
+    if (!validated.success) throw new DeepSeekStreamError('invalid_response');
+    const readingId = await saveAuthenticatedReading(parsedInput.data, ctx, validated.data);
+    writeSseEvent(res, 'complete', {
+      integratedReading: validated.data.integrated_reading,
+      hexagramReading: validated.data.hexagram_reading,
+      readingId,
+      remaining: rateCheck.remaining,
+    });
+  } catch (error) {
+    if (!disconnectController.signal.aborted) {
+      const publicError = getDeepSeekError(error);
+      writeSseEvent(res, 'error', { message: publicError.message });
+    }
+  } finally {
+    res.off('close', abortOnDisconnect);
+    if (!res.writableEnded && !res.destroyed) res.end();
+  }
 }
 
 export const readingRouter = router({
@@ -264,33 +428,7 @@ export const readingRouter = router({
         throw getDeepSeekError(error);
       }
 
-      // 当前阶段的历史仅保存在浏览器。保留已登录用户写库能力，供未来 OAuth 版本复用；
-      // 匿名请求绝不向 readings 表写入问题或解读内容。
-      let readingId: number | null = null;
-      if (ctx.user) {
-        try {
-          const db = await getDb();
-          if (db) {
-            const [result] = await db.insert(readings).values({
-              userId: ctx.user.id,
-              question: input.question,
-              linesJson: input.linesJson,
-              originalKey: input.originalKey,
-              originalName: input.originalName,
-              originalBits: input.originalBits,
-              changedKey: input.changedKey,
-              changedName: input.changedName,
-              changedBits: input.changedBits,
-              movingLinesJson: JSON.stringify(input.movingLines),
-              integratedReading: generated.integrated_reading,
-              hexagramReading: generated.hexagram_reading,
-            });
-            readingId = (result as { insertId?: number }).insertId ?? null;
-          }
-        } catch (error) {
-          console.error('[Reading] Authenticated history save failed:', error instanceof Error ? error.message : error);
-        }
-      }
+      const readingId = await saveAuthenticatedReading(input, ctx, generated);
 
       return {
         integratedReading: generated.integrated_reading,
