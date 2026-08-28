@@ -85,6 +85,9 @@ function getCameraErrorMessage(error: unknown): string {
     }
   }
   if (error instanceof Error) {
+    if (error instanceof WebAssembly.CompileError || /WebAssembly|wasm|Content Security Policy/i.test(error.message)) {
+      return '手势模型被浏览器安全策略阻止。请刷新页面后重新启动手势投掷。';
+    }
     if (error.message === 'CAMERA_READY_TIMEOUT' || error.message === 'CAMERA_PLAYBACK_FAILED') {
       return '已取得摄像头权限，但画面没有成功启动。请关闭占用摄像头的应用，刷新页面后重试。';
     }

@@ -37,6 +37,7 @@ describe('HTTP 安全中间件', () => {
     applySecurityHeaders(createRequest({ path: '/api/trpc/reading.generate' }), response, next);
 
     expect(headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    expect(headers.get('Content-Security-Policy')).toContain("script-src 'self' 'wasm-unsafe-eval'");
     expect(headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
     expect(headers.get('Permissions-Policy')).toContain('camera=(self)');
@@ -55,7 +56,7 @@ describe('HTTP 安全中间件', () => {
     vi.stubEnv('NODE_ENV', 'development');
     const { response, headers } = createResponse();
     applySecurityHeaders(createRequest(), response, vi.fn());
-    expect(headers.get('Content-Security-Policy')).toContain("script-src 'self' 'unsafe-inline'");
+    expect(headers.get('Content-Security-Policy')).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'");
     expect(headers.get('Content-Security-Policy')).toContain(' ws:');
   });
 
