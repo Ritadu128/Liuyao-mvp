@@ -5,6 +5,7 @@ export type GestureStatus = 'IDLE' | 'READY' | 'CHARGING' | 'THROWING' | 'COOLDO
 
 type GestureThrowOptions = {
   onThrow?: (power: number) => void;
+  disabled?: boolean;
 };
 
 const CONFIG = {
@@ -15,7 +16,61 @@ const CONFIG = {
   maxChargeTime: 3_000,
   cooldownTime: 800,
   handLostTimeout: 1_200,
+  cameraReadyTimeout: 12_000,
+  modelReadyTimeout: 45_000,
 };
+
+const MEDIAPIPE_WASM_PATH = '/mediapipe/wasm';
+const GESTURE_MODEL_PATH = '/mediapipe/gesture_recognizer.task';
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      value => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      error => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+function waitForVideoReady(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('CAMERA_READY_TIMEOUT'));
+    }, CONFIG.cameraReadyTimeout);
+
+    const handleReady = () => {
+      if (video.videoWidth === 0) return;
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(video.error ?? new Error('CAMERA_PLAYBACK_FAILED'));
+    };
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener('loadeddata', handleReady);
+      video.removeEventListener('canplay', handleReady);
+      video.removeEventListener('error', handleError);
+    };
+
+    video.addEventListener('loadeddata', handleReady);
+    video.addEventListener('canplay', handleReady);
+    video.addEventListener('error', handleError);
+  });
+}
 
 function getCameraErrorMessage(error: unknown): string {
   if (error instanceof DOMException) {
@@ -29,15 +84,24 @@ function getCameraErrorMessage(error: unknown): string {
       return '摄像头正被其他应用占用。请关闭其他占用后重试。';
     }
   }
-  return '手势识别启动失败。请检查摄像头、网络连接和浏览器权限后重试。';
+  if (error instanceof Error) {
+    if (error.message === 'CAMERA_READY_TIMEOUT' || error.message === 'CAMERA_PLAYBACK_FAILED') {
+      return '已取得摄像头权限，但画面没有成功启动。请关闭占用摄像头的应用，刷新页面后重试。';
+    }
+    if (error.message === 'GESTURE_MODEL_TIMEOUT') {
+      return '摄像头已打开，但手势模型加载超时。请刷新页面后重试。';
+    }
+  }
+  return '手势识别启动失败。请检查摄像头和浏览器权限后重试。';
 }
 
 export function useGestureThrow(
   videoRef: React.RefObject<HTMLVideoElement | null>,
-  { onThrow }: GestureThrowOptions = {},
+  { onThrow, disabled = false }: GestureThrowOptions = {},
 ) {
   const [status, setStatus] = useState<GestureStatus>('IDLE');
   const [gestureEnabled, setGestureEnabled] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
   const [powerPreview, setPowerPreview] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +112,8 @@ export function useGestureThrow(
   const rafIdRef = useRef<number>(0);
   const lastTimestampRef = useRef(-1);
   const onThrowRef = useRef(onThrow);
+  const disabledRef = useRef(disabled);
+  const startSessionRef = useRef(0);
 
   const stateRef = useRef({
     status: 'IDLE' as GestureStatus,
@@ -62,6 +128,10 @@ export function useGestureThrow(
   useEffect(() => {
     onThrowRef.current = onThrow;
   }, [onThrow]);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
 
   const updateStatus = useCallback((nextStatus: GestureStatus) => {
     stateRef.current.status = nextStatus;
@@ -120,6 +190,13 @@ export function useGestureThrow(
 
     if (state.status === 'CHARGING') {
       setPowerPreview(getCurrentPower());
+    }
+
+    if (disabledRef.current && (state.status === 'READY' || state.status === 'CHARGING')) {
+      cancelCharge();
+      resetGestureStability();
+      rafIdRef.current = requestAnimationFrame(processFrame);
+      return;
     }
 
     if (!hasReliableGesture) {
@@ -198,23 +275,36 @@ export function useGestureThrow(
     return () => cancelAnimationFrame(rafIdRef.current);
   }, [gestureEnabled, processFrame]);
 
+  const releaseCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+  }, [videoRef]);
+
   const stop = useCallback(() => {
+    startSessionRef.current += 1;
     setGestureEnabled(false);
+    setCameraActive(false);
+    setIsLoading(false);
+    setError(null);
     updateStatus('IDLE');
     setPowerPreview(0);
     setLastGesture('未检测到手势');
     clearTimeout(stateRef.current.cooldownTimer as number);
     resetGestureStability();
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) videoRef.current.srcObject = null;
+    releaseCamera();
     lastTimestampRef.current = -1;
-  }, [resetGestureStability, updateStatus, videoRef]);
+  }, [releaseCamera, resetGestureStability, updateStatus]);
 
   const start = useCallback(async () => {
-    if (!videoRef.current || isLoading) return;
+    const video = videoRef.current;
+    if (!video || isLoading || gestureEnabled) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setError('当前浏览器不支持摄像头访问。请使用最新版 Chrome、Edge 或 Safari。');
       return;
@@ -222,40 +312,68 @@ export function useGestureThrow(
 
     setError(null);
     setIsLoading(true);
+    setCameraActive(false);
     updateStatus('IDLE');
+    releaseCamera();
+    const session = ++startSessionRef.current;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
       });
+      if (session !== startSessionRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
       streamRef.current = stream;
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
+      video.srcObject = stream;
+      await withTimeout(video.play(), CONFIG.cameraReadyTimeout, 'CAMERA_PLAYBACK_FAILED');
+      await waitForVideoReady(video);
+      if (session !== startSessionRef.current) return;
+
+      setCameraActive(true);
+      stream.getVideoTracks().forEach(track => {
+        track.addEventListener('ended', () => {
+          if (session !== startSessionRef.current) return;
+          stop();
+          setError('摄像头连接已中断。请检查设备后重新启动手势投掷。');
+        }, { once: true });
+      });
 
       if (!recognizerRef.current) {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm',
+        const vision = await withTimeout(
+          FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_PATH),
+          CONFIG.modelReadyTimeout,
+          'GESTURE_MODEL_TIMEOUT',
         );
         let recognizer: GestureRecognizer | null = null;
         for (const delegate of ['GPU', 'CPU'] as const) {
           try {
-            recognizer = await GestureRecognizer.createFromOptions(vision, {
-              baseOptions: {
-                modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',
-                delegate,
-              },
-              runningMode: 'VIDEO',
-              numHands: 1,
-            });
+            recognizer = await withTimeout(
+              GestureRecognizer.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: GESTURE_MODEL_PATH, delegate },
+                runningMode: 'VIDEO',
+                numHands: 1,
+              }),
+              CONFIG.modelReadyTimeout,
+              'GESTURE_MODEL_TIMEOUT',
+            );
             break;
           } catch (error) {
             console.warn(`[GestureThrow] ${delegate} delegate unavailable; trying fallback.`, error);
           }
         }
         if (!recognizer) throw new Error('Gesture recognizer could not be initialized');
+        if (session !== startSessionRef.current) {
+          recognizer.close();
+          return;
+        }
         recognizerRef.current = recognizer;
       }
+
+      if (session !== startSessionRef.current) return;
 
       stateRef.current.lastHandTime = Date.now();
       stateRef.current.lastProcessTime = 0;
@@ -263,18 +381,32 @@ export function useGestureThrow(
       setGestureEnabled(true);
       updateStatus('READY');
     } catch (startError) {
+      if (session !== startSessionRef.current) return;
       console.error('[GestureThrow] start error:', startError);
+      startSessionRef.current += 1;
       setError(getCameraErrorMessage(startError));
-      stop();
-    } finally {
+      setGestureEnabled(false);
+      setCameraActive(false);
       setIsLoading(false);
+      updateStatus('IDLE');
+      releaseCamera();
+    } finally {
+      if (session === startSessionRef.current) setIsLoading(false);
     }
-  }, [isLoading, resetGestureStability, stop, updateStatus, videoRef]);
+  }, [gestureEnabled, isLoading, releaseCamera, resetGestureStability, stop, updateStatus, videoRef]);
 
-  useEffect(() => () => stop(), [stop]);
+  useEffect(() => () => {
+    startSessionRef.current += 1;
+    cancelAnimationFrame(rafIdRef.current);
+    clearTimeout(stateRef.current.cooldownTimer as number);
+    releaseCamera();
+    recognizerRef.current?.close();
+    recognizerRef.current = null;
+  }, [releaseCamera]);
 
   return {
     gestureEnabled,
+    cameraActive,
     status,
     powerPreview,
     isLoading,

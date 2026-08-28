@@ -62,14 +62,14 @@ export function PrivacyPage() {
           title: '摄像头与手势识别',
           paragraphs: [
             '摄像头仅在你主动点击“启动手势识别”并授予浏览器权限后开启。视频流由浏览器本地的 MediaPipe GestureRecognizer 用于识别握拳和张掌，不会由当前应用上传至本项目服务器或 DeepSeek。',
-            '手势模型与运行组件会在你启动该功能时从 jsDelivr 和 Google 的 MediaPipe 模型地址加载。因此，这些第三方网络服务可能按其自身政策处理网络连接信息，例如 IP 地址。关闭摄像头、停止识别或离开投掷页面时，应用会停止本地媒体轨道。',
+            '手势模型与运行组件随本网站由同一域名提供，不需要把摄像头画面发送给第三方。关闭摄像头、停止识别或离开投掷页面时，应用会停止本地媒体轨道。',
           ],
         },
         {
           title: '本地存储、Cookie 与第三方服务',
           paragraphs: [
             '当前匿名版本使用 localStorage 保存匿名历史，不依赖登录 Cookie。项目中保留了未来 OAuth 所需代码，但在未配置 OAuth 环境变量时不会启用，也不会在匿名流程中创建 OAuth 会话 Cookie。',
-            '第三方服务包括：DeepSeek（仅在请求解读时接收上述解读所需文本）、Google Fonts（网页字体加载）以及仅在主动启用手势时使用的 jsDelivr/Google MediaPipe 资源。随喜区在作者提供 Ko-fi 链接后会跳转至 Ko-fi；当前版本未配置该链接。',
+            '第三方服务包括：DeepSeek（仅在请求解读时接收上述解读所需文本）和 Google Fonts（网页字体加载）。随喜区在作者提供 Ko-fi 链接后会跳转至 Ko-fi；当前版本未配置该链接。',
           ],
         },
         {

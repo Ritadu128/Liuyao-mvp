@@ -18,7 +18,8 @@ import { useLocation } from 'wouter';
 import { useDivination } from '@/contexts/DivinationContext';
 import { throwOnce, throwAllSix, computeHexagram, getLineDisplay } from '@/lib/liuyao';
 import CoinScene, { type CoinFace } from '@/components/CoinScene';
-import { GestureThrowPanel } from '@/components/GestureThrowPanel';
+import { GestureThrowButton, GestureThrowIndicator } from '@/components/GestureThrowControls';
+import { useGestureThrow } from '@/hooks/useGestureThrow';
 import type { ThrowResult } from '@/lib/liuyao';
 
 // ─── 六爻线条（HUD 内使用）────────────────────────────────────────────────
@@ -72,6 +73,7 @@ export default function ThrowPage() {
     allResults?: ThrowResult[];
     mode: 'single' | 'all';
   } | null>(null);
+  const gestureVideoRef = useRef<HTMLVideoElement>(null);
 
   // 没有问题时跳回提问页
   useEffect(() => {
@@ -176,6 +178,21 @@ export default function ThrowPage() {
     handleThrowOne(power);
   }, [handleThrowOne]);
 
+  const {
+    gestureEnabled,
+    cameraActive,
+    status: gestureStatus,
+    powerPreview,
+    isLoading: isGestureLoading,
+    error: gestureError,
+    lastGesture,
+    start: startGestureThrow,
+    stop: stopGestureThrow,
+  } = useGestureThrow(gestureVideoRef, {
+    onThrow: handleGestureThrow,
+    disabled: isAnimating || throwCount >= 6,
+  });
+
   // ── 一键成卦 ─────────────────────────────────────────────────────────────
   const handleThrowAll = useCallback(() => {
     const currentCount = throwsRef.current.length;
@@ -207,6 +224,25 @@ export default function ThrowPage() {
         overflow: 'hidden',
       }}
     >
+      {/* 保持为可播放的 1px 视频源，供 MediaPipe 在本机识别；不向页面展示或上传画面。 */}
+      <video
+        ref={gestureVideoRef}
+        autoPlay
+        muted
+        playsInline
+        aria-hidden="true"
+        tabIndex={-1}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '1px',
+          height: '1px',
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* ── 顶部问题条 ≤56px ──────────────────────────────────────────────── */}
       <div
         style={{
@@ -275,7 +311,7 @@ export default function ThrowPage() {
           top: '56px',
           left: 0,
           right: 0,
-          bottom: 'calc(15vh)',
+          bottom: 'clamp(90px, 15vh, 130px)',
           zIndex: 10,
         }}
       >
@@ -309,7 +345,7 @@ export default function ThrowPage() {
           <div
             style={{
               position: 'absolute',
-              bottom: '18px',
+              bottom: gestureEnabled || isGestureLoading || gestureError ? '74px' : '18px',
               left: '50%',
               transform: 'translateX(-50%)',
               background: 'rgba(245,240,230,0.92)',
@@ -332,7 +368,7 @@ export default function ThrowPage() {
         )}
 
         {/* 点击提示（未投掷时） */}
-        {!isAnimating && currentCount === 0 && !showLineResult && (
+        {!isAnimating && currentCount === 0 && !showLineResult && !gestureEnabled && !isGestureLoading && !gestureError && (
           <div
             style={{
               position: 'absolute',
@@ -351,14 +387,35 @@ export default function ThrowPage() {
         )}
       </div>
 
+      {/* 手势启动后只在主按钮上方显示状态与蓄力，不展示摄像头预览。 */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 'calc(clamp(90px, 15vh, 130px) + 12px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 40,
+          pointerEvents: 'none',
+        }}
+      >
+        <GestureThrowIndicator
+          gestureEnabled={gestureEnabled}
+          cameraActive={cameraActive}
+          status={gestureStatus}
+          powerPreview={powerPreview}
+          isLoading={isGestureLoading}
+          error={gestureError}
+          lastGesture={lastGesture}
+          disabled={isAnimating || isCastingDone}
+        />
+      </div>
+
       {/* ── 底部 HUD 进度层 ≤15vh ─────────────────────────────────────────── */}
       <div
         style={{
           position: 'absolute',
           bottom: 0, left: 0, right: 0,
-          height: '15vh',
-          minHeight: '90px',
-          maxHeight: '130px',
+          height: 'clamp(90px, 15vh, 130px)',
           background: 'rgba(245,240,230,0.92)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
@@ -428,34 +485,48 @@ export default function ThrowPage() {
                 {isAnimating ? '投掷中…' : `投 第 ${currentCount + 1} 爻`}
               </button>
 
-              {/* 一键成卦（次要按钮） */}
-              {!isAnimating && (
+              {/* 次要操作：手势入口在左，一键成卦在右。 */}
+              <div style={{ width: '100%', maxWidth: '220px', display: 'flex', gap: '7px' }}>
+                <GestureThrowButton
+                  gestureEnabled={gestureEnabled}
+                  isLoading={isGestureLoading}
+                  disabled={isAnimating || isCastingDone}
+                  onStart={startGestureThrow}
+                  onStop={stopGestureThrow}
+                />
                 <button
                   onClick={handleThrowAll}
+                  disabled={isAnimating}
                   style={{
+                    flex: 1,
+                    minWidth: 0,
                     background: 'none',
                     border: '1px solid rgba(160,120,60,0.32)',
                     borderRadius: '3px',
-                    color: 'rgba(120,85,20,0.60)',
-                    fontSize: '11px',
+                    color: isAnimating ? 'rgba(120,85,20,0.30)' : 'rgba(120,85,20,0.66)',
+                    fontSize: '10px',
                     fontFamily: '"Noto Serif SC", serif',
-                    letterSpacing: '0.18em',
-                    padding: '4px 20px',
-                    cursor: 'pointer',
+                    letterSpacing: '0.08em',
+                    padding: '5px 9px',
+                    cursor: isAnimating ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s',
+                    whiteSpace: 'nowrap',
                   }}
                   onMouseEnter={e => {
+                    if (isAnimating) return;
                     (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(160,120,60,0.65)';
                     (e.currentTarget as HTMLButtonElement).style.color = 'rgba(120,85,20,0.90)';
                   }}
                   onMouseLeave={e => {
                     (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(160,120,60,0.32)';
-                    (e.currentTarget as HTMLButtonElement).style.color = 'rgba(120,85,20,0.60)';
+                    (e.currentTarget as HTMLButtonElement).style.color = isAnimating
+                      ? 'rgba(120,85,20,0.30)'
+                      : 'rgba(120,85,20,0.66)';
                   }}
                 >
                   一键成卦
                 </button>
-              )}
+              </div>
             </>
           ) : (
             <div
@@ -504,21 +575,6 @@ export default function ThrowPage() {
           ))}
         </div>
       </div>
-      {/* ── 手势投掷面板（右下角浮层）── */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 'calc(15vh + 16px)',
-          right: '16px',
-          zIndex: 40,
-        }}
-      >
-        <GestureThrowPanel
-          onThrow={handleGestureThrow}
-          disabled={isAnimating || isCastingDone}
-        />
-      </div>
-
         {/* 全局 CSS 动画 */}
       <style>{`
         @keyframes fadeInUp {

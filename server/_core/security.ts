@@ -1,19 +1,23 @@
 import type { NextFunction, Request, Response } from 'express';
 
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
-  "connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net https://storage.googleapis.com",
-  "worker-src 'self' blob:",
-].join('; ');
+function createContentSecurityPolicy(isDevelopment = false) {
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    `script-src 'self'${isDevelopment ? " 'unsafe-inline'" : ''}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    `connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com${isDevelopment ? ' ws:' : ''}`,
+    "worker-src 'self' blob:",
+  ].join('; ');
+}
+
+const CONTENT_SECURITY_POLICY = createContentSecurityPolicy();
 
 const PERMISSIONS_POLICY = [
   'camera=(self)',
@@ -26,7 +30,10 @@ const PERMISSIONS_POLICY = [
 
 /** 为所有响应提供与当前第三方资源清单兼容的安全响应头。 */
 export function applySecurityHeaders(req: Request, res: Response, next: NextFunction) {
-  res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+  res.setHeader(
+    'Content-Security-Policy',
+    createContentSecurityPolicy(process.env.NODE_ENV === 'development'),
+  );
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'DENY');

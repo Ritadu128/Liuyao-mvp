@@ -51,6 +51,14 @@ describe('HTTP 安全中间件', () => {
     expect(headers.get('Strict-Transport-Security')).toBe('max-age=31536000; includeSubDomains');
   });
 
+  it('仅在开发环境放行 Vite 的内联预加载与热更新连接', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const { response, headers } = createResponse();
+    applySecurityHeaders(createRequest(), response, vi.fn());
+    expect(headers.get('Content-Security-Policy')).toContain("script-src 'self' 'unsafe-inline'");
+    expect(headers.get('Content-Security-Policy')).toContain(' ws:');
+  });
+
   it('允许同源 JSON 写请求和无 Origin 的 CLI 请求', () => {
     const sameOrigin = createRequest({
       method: 'POST',
