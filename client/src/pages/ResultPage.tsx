@@ -3,8 +3,8 @@ import { useLocation } from 'wouter';
 import { useDivination } from '@/contexts/DivinationContext';
 import { useHexagramLookup } from '@/hooks/useHexagramData';
 import { HexagramDisplay } from '@/components/HexagramLine';
-import { trpc } from '@/lib/trpc';
 import { cn } from '@/lib/utils';
+import { streamReading } from '@/lib/readingStream';
 import { SafeMarkdown } from '@/components/SafeMarkdown';
 import {
   FANG_SONG, SONG,
@@ -23,7 +23,12 @@ export default function ResultPage() {
     setIntegratedReading, setHexagramReading, setIsLoadingReading, setSavedReadingId } = useDivination();
   const [activeTab, setActiveTab] = useState<TabType>('integrated');
   const [revealed, setRevealed] = useState(false);
+  const [streamError, setStreamError] = useState<string | undefined>();
   const exportTargetRef = useRef<HTMLDivElement>(null);
+  const requestStartedRef = useRef(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const integratedBufferRef = useRef('');
+  const hexagramBufferRef = useRef('');
   useEffect(() => {
     if (!state.hexagramResult) navigate('/');
   }, [state.hexagramResult, navigate]);
@@ -48,41 +53,18 @@ export default function ResultPage() {
     return () => clearTimeout(t);
   }, []);
 
-  const generateReading = trpc.reading.generate.useMutation({
-    onSuccess: (data: { integratedReading: string; hexagramReading: string; readingId: number | null }) => {
-      setIntegratedReading(data.integratedReading);
-      setHexagramReading(data.hexagramReading);
-      setIsLoadingReading(false);
-      if (data.readingId) setSavedReadingId(data.readingId);
-
-      // 匿名版本始终保存到当前浏览器，避免 OAuth 或服务端历史成为使用前提。
-      if (hexResult && originalHexagram) {
-        addLocalReading({
-          question: state.question,
-          linesJson: JSON.stringify(hexResult.lines),
-          originalKey: originalHexagram.key,
-          originalName: originalHexagram.name,
-          originalBits: hexResult.originalBits,
-          changedKey: changedHexagram?.key ?? null,
-          changedName: changedHexagram?.name ?? null,
-          changedBits: hexResult.changedBits !== hexResult.originalBits ? hexResult.changedBits : null,
-          movingLinesJson: JSON.stringify(hexResult.movingLines),
-          integratedReading: data.integratedReading,
-          hexagramReading: data.hexagramReading,
-        });
-      }
-    },
-    onError: (err) => {
-      setIsLoadingReading(false);
-      console.error('[Reading] generate error:', err.message);
-    }
-  });
-
   useEffect(() => {
     if (!hexLoading && originalHexagram && originalText && hexResult &&
-      !state.integratedReading && !state.isLoadingReading && !generateReading.isPending) {
+      !state.integratedReading && !state.isLoadingReading && !requestStartedRef.current) {
+      requestStartedRef.current = true;
       setIsLoadingReading(true);
-      generateReading.mutate({
+      setStreamError(undefined);
+      integratedBufferRef.current = '';
+      hexagramBufferRef.current = '';
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+
+      void streamReading({
         question: state.question,
         originalKey: originalHexagram.key,
         originalName: originalHexagram.name,
@@ -98,13 +80,56 @@ export default function ResultPage() {
           text: originalText.yao_ci[String(pos)] ?? ''
         })),
         linesJson: JSON.stringify(hexResult.lines),
+      }, {
+        signal: controller.signal,
+        onDelta: (section, text) => {
+          if (section === 'integrated') {
+            integratedBufferRef.current += text;
+            setIntegratedReading(integratedBufferRef.current);
+          } else {
+            hexagramBufferRef.current += text;
+            setHexagramReading(hexagramBufferRef.current);
+          }
+        },
+      }).then(data => {
+        setIntegratedReading(data.integratedReading);
+        setHexagramReading(data.hexagramReading);
+        if (data.readingId) setSavedReadingId(data.readingId);
+
+        // 匿名版本始终保存到当前浏览器，避免 OAuth 或服务端历史成为使用前提。
+        addLocalReading({
+          question: state.question,
+          linesJson: JSON.stringify(hexResult.lines),
+          originalKey: originalHexagram.key,
+          originalName: originalHexagram.name,
+          originalBits: hexResult.originalBits,
+          changedKey: changedHexagram?.key ?? null,
+          changedName: changedHexagram?.name ?? null,
+          changedBits: hexResult.changedBits !== hexResult.originalBits ? hexResult.changedBits : null,
+          movingLinesJson: JSON.stringify(hexResult.movingLines),
+          integratedReading: data.integratedReading,
+          hexagramReading: data.hexagramReading,
+        });
+      }).catch(error => {
+        if (controller.signal.aborted) return;
+        const message = error instanceof Error ? error.message : '解读生成失败，请稍后重试。';
+        setStreamError(message);
+        console.error('[Reading] stream error:', message);
+      }).finally(() => {
+        if (!controller.signal.aborted) setIsLoadingReading(false);
+        if (streamAbortRef.current === controller) streamAbortRef.current = null;
       });
     }
-  }, [hexLoading, originalHexagram, originalText, hexResult]);
+  }, [hexLoading, originalHexagram, originalText, changedHexagram, hexResult]);
+
+  useEffect(() => () => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+  }, []);
 
   if (!hexResult) return null;
 
-  const isLoading = hexLoading || state.isLoadingReading || generateReading.isPending;
+  const isLoading = hexLoading || state.isLoadingReading;
 
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--bg-paper, #faf6ed)' }}>
@@ -294,7 +319,7 @@ export default function ResultPage() {
             <IntegratedTab
               reading={state.integratedReading}
               isLoading={isLoading}
-              error={generateReading.error?.message}
+              error={streamError}
               exportTargetRef={exportTargetRef}
             />
           )}
@@ -306,7 +331,7 @@ export default function ResultPage() {
               changedText={state.changedText}
               movingLines={hexResult.movingLines}
               isLoading={isLoading}
-              error={generateReading.error?.message}
+              error={streamError}
               exportTargetRef={exportTargetRef}
             />
           )}
@@ -350,9 +375,7 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
     <ScrollCard>
       <ScrollDivider label="综合解读" />
       <div className="mt-4 min-h-[160px]">
-        {isLoading ? (
-          <AncientLoading />
-        ) : error ? (
+        {error ? (
           <div className="py-6 text-center space-y-2" style={{ fontFamily: FANG_SONG }}>
             <div className="text-2xl">{error.includes('次数已达上限') ? '☄' : '✶'}</div>
             <div className="text-sm tracking-wide" style={{ color: '#8b5a2b' }}>{error}</div>
@@ -363,8 +386,9 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
             style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
           >
             <SafeMarkdown>{reading}</SafeMarkdown>
+            {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
           </div>
-        ) : null}
+        ) : isLoading ? <AncientLoading text="正在起卦解读…" /> : null}
       </div>
       <SupportAuthor />
       <ReadingExportActions
@@ -393,9 +417,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
       <ScrollCard>
         <ScrollDivider label="卦象解读" />
         <div className="mt-4 min-h-[160px]">
-          {isLoading ? (
-            <AncientLoading />
-          ) : error ? (
+          {error ? (
             <div className="py-6 text-center space-y-2" style={{ fontFamily: FANG_SONG }}>
               <div className="text-2xl">{error.includes('次数已达上限') ? '☄' : '✶'}</div>
               <div className="text-sm tracking-wide" style={{ color: '#8b5a2b' }}>{error}</div>
@@ -406,8 +428,9 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
               style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
             >
               <SafeMarkdown>{reading}</SafeMarkdown>
+              {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
             </div>
-          ) : null}
+          ) : isLoading ? <AncientLoading text="正在生成卦象解读…" /> : null}
         </div>
       </ScrollCard>
 

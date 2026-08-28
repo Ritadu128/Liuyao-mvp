@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FilesetResolver, GestureRecognizer } from '@mediapipe/tasks-vision';
+import {
+  canReleaseGesture,
+  getGestureRequirements,
+  type GestureRecognitionStatus,
+} from '@/lib/gestureTransitions';
 
-export type GestureStatus = 'IDLE' | 'READY' | 'CHARGING' | 'THROWING' | 'COOLDOWN';
+export type GestureStatus = GestureRecognitionStatus;
 
 type GestureThrowOptions = {
-  onThrow?: (power: number) => void;
+  onThrow?: (power: number) => boolean | void;
   disabled?: boolean;
 };
 
 const CONFIG = {
   frameInterval: 1_000 / 20,
-  stableDuration: 200,
-  minGestureScore: 0.65,
-  minChargeTime: 300,
   maxChargeTime: 3_000,
   cooldownTime: 800,
   handLostTimeout: 1_200,
@@ -165,7 +167,6 @@ export function useGestureThrow(
   const [powerPreview, setPowerPreview] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastGesture, setLastGesture] = useState('未检测到手势');
 
   const recognizerRef = useRef<GestureRecognizer | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -247,7 +248,10 @@ export function useGestureThrow(
     const currentMs = Date.now();
     const state = stateRef.current;
     const topGesture = results.gestures[0]?.[0];
-    const hasReliableGesture = Boolean(topGesture && (topGesture.score ?? 0) >= CONFIG.minGestureScore);
+    const gestureCategory = topGesture?.categoryName ?? 'None';
+    const gestureScore = topGesture?.score ?? 0;
+    const requirements = getGestureRequirements(state.status, gestureCategory);
+    const hasReliableGesture = Boolean(topGesture && gestureScore >= requirements.minimumScore);
 
     if (state.status === 'CHARGING') {
       setPowerPreview(getCurrentPower());
@@ -261,7 +265,6 @@ export function useGestureThrow(
     }
 
     if (!hasReliableGesture) {
-      setLastGesture('未检测到稳定手势');
       if (currentMs - state.lastHandTime > CONFIG.handLostTimeout) {
         state.lastHandTime = currentMs;
         resetGestureStability();
@@ -272,17 +275,12 @@ export function useGestureThrow(
     }
 
     state.lastHandTime = currentMs;
-    const gestureCategory = topGesture.categoryName;
-    const gestureLabel = gestureCategory === 'Closed_Fist'
-      ? '握拳'
-      : gestureCategory === 'Open_Palm'
-        ? '张掌'
-        : '其他手势';
-    setLastGesture(gestureLabel);
 
     let stableGesture = 'None';
+    let stableForMs = 0;
     if (gestureCategory === state.lastGesture) {
-      if (currentMs - state.gestureStartTime >= CONFIG.stableDuration) {
+      stableForMs = currentMs - state.gestureStartTime;
+      if (stableForMs >= requirements.stableDuration) {
         stableGesture = gestureCategory;
       }
     } else {
@@ -300,11 +298,23 @@ export function useGestureThrow(
         break;
 
       case 'CHARGING':
-        if (stableGesture === 'Open_Palm' && currentMs - state.chargeStartTime >= CONFIG.minChargeTime) {
+        if (canReleaseGesture({
+          status: state.status,
+          gesture: gestureCategory,
+          score: gestureScore,
+          stableForMs,
+          chargeForMs: currentMs - state.chargeStartTime,
+        })) {
           const power = getCurrentPower();
+          const accepted = onThrowRef.current?.(power);
+          if (accepted === false) {
+            updateStatus('READY');
+            setPowerPreview(0);
+            resetGestureStability();
+            break;
+          }
           updateStatus('THROWING');
           setPowerPreview(power);
-          onThrowRef.current?.(power);
           clearTimeout(state.cooldownTimer as number);
           state.cooldownTimer = setTimeout(() => {
             updateStatus('COOLDOWN');
@@ -358,7 +368,6 @@ export function useGestureThrow(
     setError(null);
     updateStatus('IDLE');
     setPowerPreview(0);
-    setLastGesture('未检测到手势');
     clearTimeout(stateRef.current.cooldownTimer as number);
     resetGestureStability();
     releaseCamera();
@@ -485,7 +494,6 @@ export function useGestureThrow(
     powerPreview,
     isLoading,
     error,
-    lastGesture,
     start,
     stop,
   };

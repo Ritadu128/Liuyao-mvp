@@ -355,3 +355,19 @@
   margin-bottom: 0.5em;
   line-height: 2.0;
 }
+
+@keyframes streaming-caret-blink {
+  0%, 45% { opacity: 0.9; }
+  50%, 100% { opacity: 0.2; }
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 0.42em;
+  height: 1.05em;
+  margin-left: 0.18em;
+  vertical-align: -0.12em;
+  border-radius: 1px;
+  background: rgba(139, 92, 38, 0.72);
+  animation: streaming-caret-blink 0.8s steps(1, end) infinite;
+}

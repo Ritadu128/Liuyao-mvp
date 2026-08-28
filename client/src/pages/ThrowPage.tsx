@@ -159,7 +159,7 @@ export default function ThrowPage() {
   // ── 单次投掷 ──────────────────────────────────────────────────────────────
   const handleThrowOne = useCallback((power: number = 0.5) => {
     const currentCount = throwsRef.current.length;
-    if (isAnimating || currentCount >= 6) return;
+    if (isAnimating || currentCount >= 6) return false;
 
     setShowLineResult(false);
     setThrowPower(Math.max(0, Math.min(1, power)));
@@ -171,11 +171,12 @@ export default function ThrowPage() {
     pendingRef.current = { result, mode: 'single' };
     setCoinResults(result.coins.map(c => c === 1 ? 3 : 2) as [CoinFace, CoinFace, CoinFace]);
     setIsAnimating(true);
+    return true;
     }, [isAnimating]);
 
   // 手势释放后沿用单次投掷流程；由 handleThrowOne 同步拦截动画中和六爻完成后的重复触发。
   const handleGestureThrow = useCallback((power: number) => {
-    handleThrowOne(power);
+    return handleThrowOne(power);
   }, [handleThrowOne]);
 
   const {
@@ -185,7 +186,6 @@ export default function ThrowPage() {
     powerPreview,
     isLoading: isGestureLoading,
     error: gestureError,
-    lastGesture,
     start: startGestureThrow,
     stop: stopGestureThrow,
   } = useGestureThrow(gestureVideoRef, {
@@ -405,7 +405,6 @@ export default function ThrowPage() {
           powerPreview={powerPreview}
           isLoading={isGestureLoading}
           error={gestureError}
-          lastGesture={lastGesture}
           disabled={isAnimating || isCastingDone}
         />
       </div>
@@ -420,10 +419,11 @@ export default function ThrowPage() {
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           borderTop: '1px solid rgba(160,120,60,0.20)',
-          display: 'flex',
+          display: 'grid',
+          gridTemplateColumns: '64px minmax(0, 1fr) 64px',
           alignItems: 'center',
-          padding: '0 20px',
-          gap: '16px',
+          padding: '0 16px',
+          gap: '12px',
           zIndex: 30,
         }}
       >
@@ -434,7 +434,7 @@ export default function ThrowPage() {
             flexDirection: 'column-reverse',
             gap: '5px',
             width: '64px',
-            flexShrink: 0,
+            justifySelf: 'start',
           }}
         >
           {Array.from({ length: 6 }, (_, i) => (
@@ -449,7 +449,6 @@ export default function ThrowPage() {
         {/* 中间：按钮区 */}
         <div
           style={{
-            flex: 1,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -549,7 +548,7 @@ export default function ThrowPage() {
             flexDirection: 'column-reverse',
             gap: '5px',
             width: '22px',
-            flexShrink: 0,
+            justifySelf: 'end',
             alignItems: 'center',
           }}
         >

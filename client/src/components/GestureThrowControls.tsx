@@ -5,9 +5,9 @@ import type { GestureStatus } from '@/hooks/useGestureThrow';
 const STATUS_CONFIG: Record<GestureStatus, { label: string; color: string }> = {
   IDLE: { label: '正在准备手势投掷…', color: '#8a6a2f' },
   READY: { label: '请握拳蓄力', color: '#7a5c10' },
-  CHARGING: { label: '蓄力中 · 张开手掌释放', color: '#a66f08' },
-  THROWING: { label: '已释放 · 正在投掷', color: '#8b4b16' },
-  COOLDOWN: { label: '投掷完成 · 请稍候', color: '#82766a' },
+  CHARGING: { label: '张开手掌投掷', color: '#a66f08' },
+  THROWING: { label: '投掷中', color: '#8b4b16' },
+  COOLDOWN: { label: '准备下一爻', color: '#82766a' },
 };
 
 interface GestureThrowIndicatorProps {
@@ -17,7 +17,6 @@ interface GestureThrowIndicatorProps {
   powerPreview: number;
   isLoading: boolean;
   error: string | null;
-  lastGesture: string;
   disabled?: boolean;
 }
 
@@ -28,7 +27,6 @@ export function GestureThrowIndicator({
   powerPreview,
   isLoading,
   error,
-  lastGesture,
   disabled = false,
 }: GestureThrowIndicatorProps) {
   const [loadingSeconds, setLoadingSeconds] = useState(0);
@@ -65,8 +63,8 @@ export function GestureThrowIndicator({
       aria-live="polite"
       role={error ? 'alert' : 'status'}
       style={{
-        width: 'min(310px, calc(100vw - 32px))',
-        padding: '9px 12px 10px',
+        width: 'min(360px, calc(100vw - 32px))',
+        padding: '9px 12px',
         borderRadius: '7px',
         border: `1px solid ${error ? 'rgba(154,52,18,0.26)' : 'rgba(160,120,60,0.28)'}`,
         background: 'rgba(245,240,230,0.90)',
@@ -77,7 +75,7 @@ export function GestureThrowIndicator({
         fontFamily: '"Noto Serif SC", serif',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0 }}>
         <span
           aria-hidden="true"
           style={{
@@ -89,28 +87,20 @@ export function GestureThrowIndicator({
             animation: isCharging || isLoading ? 'gesturePulse 0.7s ease-in-out infinite' : 'none',
           }}
         />
-        <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, lineHeight: 1.45 }}>
+        <span style={{ flexShrink: error ? 1 : 0, fontSize: '11px', fontWeight: 600, lineHeight: 1.45, whiteSpace: error ? 'normal' : 'nowrap' }}>
           {label}
         </span>
-        {!error && gestureEnabled && (
-          <span style={{ flexShrink: 0, fontSize: '9px', color: 'rgba(90,62,20,0.55)' }}>
-            {isCharging ? `${Math.round(powerPreview * 100)}%` : `识别：${lastGesture}`}
-          </span>
-        )}
-      </div>
-
-      {!error && (
-        <div
-          aria-label={`蓄力值 ${Math.round(powerPreview * 100)}%`}
-          style={{
-            width: '100%',
-            height: '5px',
-            marginTop: '7px',
-            overflow: 'hidden',
-            borderRadius: '3px',
-            background: 'rgba(124,92,58,0.13)',
-          }}
-        >
+        {!error && <div
+            aria-label={`蓄力值 ${Math.round(powerPreview * 100)}%`}
+            style={{
+              flex: 1,
+              minWidth: '72px',
+              height: '5px',
+              overflow: 'hidden',
+              borderRadius: '3px',
+              background: 'rgba(124,92,58,0.13)',
+            }}
+          >
           <div
             style={{
               width: isLoading ? '42%' : `${powerPreview * 100}%`,
@@ -122,14 +112,8 @@ export function GestureThrowIndicator({
               transition: isCharging ? 'none' : 'width 160ms ease-out',
             }}
           />
-        </div>
-      )}
-
-      {isLoading && cameraActive && (
-        <div style={{ marginTop: '5px', fontSize: '9px', color: 'rgba(90,62,20,0.52)', textAlign: 'center' }}>
-          首次需加载约 20 MB，完成后将自动缓存
-        </div>
-      )}
+        </div>}
+      </div>
 
       <style>{`
         @keyframes gesturePulse {
