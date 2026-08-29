@@ -50,7 +50,7 @@ export function GestureThrowIndicator({
     ? error
     : isLoading
       ? cameraActive
-        ? `摄像头已开启 · 正在准备手势识别（${loadingSeconds}秒）`
+        ? `准备手势识别 ${loadingSeconds}秒`
         : '正在请求并启动摄像头…'
       : disabled && status === 'READY'
         ? '投掷动画进行中…'
@@ -64,6 +64,9 @@ export function GestureThrowIndicator({
       role={error ? 'alert' : 'status'}
       style={{
         width: 'min(360px, calc(100vw - 32px))',
+        maxWidth: 'calc(100vw - 32px)',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
         padding: '9px 12px',
         borderRadius: '7px',
         border: `1px solid ${error ? 'rgba(154,52,18,0.26)' : 'rgba(160,120,60,0.28)'}`,
@@ -87,14 +90,24 @@ export function GestureThrowIndicator({
             animation: isCharging || isLoading ? 'gesturePulse 0.7s ease-in-out infinite' : 'none',
           }}
         />
-        <span style={{ flexShrink: error ? 1 : 0, fontSize: '11px', fontWeight: 600, lineHeight: 1.45, whiteSpace: error ? 'normal' : 'nowrap' }}>
+        <span style={{
+          minWidth: 0,
+          flex: error ? '1 1 auto' : '0 1 auto',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          fontSize: '11px',
+          fontWeight: 600,
+          lineHeight: 1.45,
+          whiteSpace: error ? 'normal' : 'nowrap',
+        }}>
           {label}
         </span>
         {!error && <div
             aria-label={`蓄力值 ${Math.round(powerPreview * 100)}%`}
             style={{
-              flex: 1,
-              minWidth: '72px',
+              flex: '1 1 96px',
+              minWidth: '48px',
+              maxWidth: '160px',
               height: '5px',
               overflow: 'hidden',
               borderRadius: '3px',

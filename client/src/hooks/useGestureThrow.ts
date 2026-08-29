@@ -392,13 +392,51 @@ export function useGestureThrow(
     const preloadController = new AbortController();
     preloadAbortRef.current = preloadController;
     // Start the two large downloads together while the user handles the camera
-    // permission prompt. The model buffer is then reused during initialization.
-    const preloadPromise = preloadGestureAssets(preloadController.signal);
+    // permission prompt. Recognition initialization also starts immediately so
+    // mobile users do not wait for download, camera startup, and Wasm setup in
+    // three consecutive phases.
+    const preloadPromise = recognizerRef.current
+      ? null
+      : preloadGestureAssets(preloadController.signal);
+
+    const recognizerAttempt = recognizerRef.current
+      ? Promise.resolve({ recognizer: recognizerRef.current, error: null as unknown })
+      : (async () => {
+          const { modelBuffer, wasmFileset } = await preloadPromise!;
+          if (session !== startSessionRef.current) throw new DOMException('Gesture startup cancelled', 'AbortError');
+
+          let recognizer: GestureRecognizer | null = null;
+          let lastError: unknown = null;
+          for (const delegate of ['GPU', 'CPU'] as const) {
+            try {
+              recognizer = await withTimeout(
+                GestureRecognizer.createFromOptions(wasmFileset, {
+                  baseOptions: modelBuffer
+                    ? { modelAssetBuffer: modelBuffer.slice(), delegate }
+                    : { modelAssetPath: GESTURE_MODEL_PATH, delegate },
+                  runningMode: 'VIDEO',
+                  numHands: 1,
+                }),
+                delegate === 'GPU' ? CONFIG.gpuDelegateTimeout : CONFIG.modelReadyTimeout,
+                'GESTURE_MODEL_TIMEOUT',
+              );
+              break;
+            } catch (error) {
+              lastError = error;
+              console.warn(`[GestureThrow] ${delegate} delegate unavailable; trying fallback.`, error);
+            }
+          }
+          if (!recognizer) throw lastError ?? new Error('Gesture recognizer could not be initialized');
+          return recognizer;
+        })().then(
+          recognizer => ({ recognizer, error: null as unknown }),
+          error => ({ recognizer: null, error }),
+        );
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        video: { width: { ideal: 480 }, height: { ideal: 360 }, facingMode: 'user' },
       });
       if (session !== startSessionRef.current) {
         stream.getTracks().forEach(track => track.stop());
@@ -419,38 +457,14 @@ export function useGestureThrow(
           setError('摄像头连接已中断。请检查设备后重新启动手势投掷。');
         }, { once: true });
       });
-      const { modelBuffer, wasmFileset } = await preloadPromise;
+      const { recognizer, error: recognizerError } = await recognizerAttempt;
       if (preloadAbortRef.current === preloadController) preloadAbortRef.current = null;
-      if (session !== startSessionRef.current) return;
-
-      if (!recognizerRef.current) {
-        const vision = wasmFileset;
-        let recognizer: GestureRecognizer | null = null;
-        for (const delegate of ['GPU', 'CPU'] as const) {
-          try {
-            recognizer = await withTimeout(
-              GestureRecognizer.createFromOptions(vision, {
-                baseOptions: modelBuffer
-                  ? { modelAssetBuffer: modelBuffer.slice(), delegate }
-                  : { modelAssetPath: GESTURE_MODEL_PATH, delegate },
-                runningMode: 'VIDEO',
-                numHands: 1,
-              }),
-              delegate === 'GPU' ? CONFIG.gpuDelegateTimeout : CONFIG.modelReadyTimeout,
-              'GESTURE_MODEL_TIMEOUT',
-            );
-            break;
-          } catch (error) {
-            console.warn(`[GestureThrow] ${delegate} delegate unavailable; trying fallback.`, error);
-          }
-        }
-        if (!recognizer) throw new Error('Gesture recognizer could not be initialized');
-        if (session !== startSessionRef.current) {
-          recognizer.close();
-          return;
-        }
-        recognizerRef.current = recognizer;
+      if (!recognizer) throw recognizerError ?? new Error('Gesture recognizer could not be initialized');
+      if (session !== startSessionRef.current) {
+        if (recognizer !== recognizerRef.current) recognizer.close();
+        return;
       }
+      recognizerRef.current = recognizer;
 
       if (session !== startSessionRef.current) return;
 
