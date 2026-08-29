@@ -335,7 +335,16 @@ export default function ResultPage() {
               exportTargetRef={exportTargetRef}
             />
           )}
-          <Disclaimer />
+          </div>
+
+          {/* 支持作者与解读、导出内容分离，且永不进入长图。 */}
+          <div className="mt-4">
+            <ScrollCard>
+              <SupportAuthor />
+            </ScrollCard>
+          </div>
+          <div className="mt-4">
+            <Disclaimer />
           </div>
         </div>
 
@@ -390,10 +399,8 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
           </div>
         ) : isLoading ? <AncientLoading text="正在起卦解读…" /> : null}
       </div>
-      <SupportAuthor />
       <ReadingExportActions
         targetRef={exportTargetRef}
-        title="综合解读"
         filePrefix="六爻-综合解读"
         disabled={!reading || isLoading || Boolean(error)}
       />
@@ -432,49 +439,49 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
             </div>
           ) : isLoading ? <AncientLoading text="正在生成卦象解读…" /> : null}
         </div>
+        <ReadingExportActions
+          targetRef={exportTargetRef}
+          filePrefix="六爻-卦象解读"
+          disabled={!reading || isLoading || Boolean(error)}
+        />
       </ScrollCard>
 
       {/* 经文原文 */}
       {originalText && (
-        <ScrollCard>
-          <ScrollDivider label={`《${originalText.name}》原文`} />
-          <div className="mt-4 space-y-4">
-            <ClassicSection label="卦辞" content={originalText.gua_ci} />
-            <ClassicSection label="象曰" content={originalText.xiang_yue} />
-            {movingLines.length > 0 && (
-              <div>
-                <span
-                  className="text-xs tracking-widest"
-                  style={{ fontFamily: FANG_SONG, color: 'rgba(160,100,35,0.8)' }}
-                >
-                  动爻爻辞
-                </span>
-                <div
-                  className="mt-1 h-px"
-                  style={{ background: 'linear-gradient(to right, rgba(175,130,50,0.3), transparent)' }}
-                />
-                <div className="mt-2 space-y-2">
-                  {movingLines.map(pos => (
-                    <p key={pos} className="leading-relaxed" style={{ fontFamily: FANG_SONG, fontSize: '0.88rem', color: '#4a3520' }}>
-                      <span style={{ color: 'rgba(160,100,35,0.9)' }}>
-                        {['初', '二', '三', '四', '五', '上'][pos - 1]}爻：
-                      </span>
-                      {originalText.yao_ci[String(pos)]}
-                    </p>
-                  ))}
+        <div data-export-ignore="true">
+          <ScrollCard>
+            <ScrollDivider label={`《${originalText.name}》原文`} />
+            <div className="mt-4 space-y-4">
+              <ClassicSection label="卦辞" content={originalText.gua_ci} />
+              <ClassicSection label="象曰" content={originalText.xiang_yue} />
+              {movingLines.length > 0 && (
+                <div>
+                  <span
+                    className="text-xs tracking-widest"
+                    style={{ fontFamily: FANG_SONG, color: 'rgba(160,100,35,0.8)' }}
+                  >
+                    动爻爻辞
+                  </span>
+                  <div
+                    className="mt-1 h-px"
+                    style={{ background: 'linear-gradient(to right, rgba(175,130,50,0.3), transparent)' }}
+                  />
+                  <div className="mt-2 space-y-2">
+                    {movingLines.map(pos => (
+                      <p key={pos} className="leading-relaxed" style={{ fontFamily: FANG_SONG, fontSize: '0.88rem', color: '#4a3520' }}>
+                        <span style={{ color: 'rgba(160,100,35,0.9)' }}>
+                          {['初', '二', '三', '四', '五', '上'][pos - 1]}爻：
+                        </span>
+                        {originalText.yao_ci[String(pos)]}
+                      </p>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </ScrollCard>
+              )}
+            </div>
+          </ScrollCard>
+        </div>
       )}
-      <SupportAuthor />
-      <ReadingExportActions
-        targetRef={exportTargetRef}
-        title="卦象解读"
-        filePrefix="六爻-卦象解读"
-        disabled={!reading || isLoading || Boolean(error)}
-      />
     </div>
   );
 }

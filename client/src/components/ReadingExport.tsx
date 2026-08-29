@@ -1,10 +1,10 @@
 import { type RefObject, useState } from 'react';
 import { toBlob } from 'html-to-image';
-import { Download, Share2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { FANG_SONG } from '@/components/ScrollUI';
 import { calculateExportPixelRatio } from '@/lib/exportImage';
 
-type ExportStatus = 'idle' | 'generating' | 'shared' | 'downloaded' | 'cancelled' | 'error';
+type ExportStatus = 'idle' | 'generating' | 'downloaded' | 'error';
 
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
@@ -22,9 +22,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 function getStatusText(status: ExportStatus, errorMessage: string | null) {
   switch (status) {
     case 'generating': return '正在生成长图，请稍候…';
-    case 'shared': return '已打开系统分享';
     case 'downloaded': return 'PNG 已开始下载';
-    case 'cancelled': return '已取消分享';
     case 'error': return errorMessage ?? '长图生成失败，请稍后重试';
     default: return null;
   }
@@ -60,18 +58,15 @@ async function createReadingImage(target: HTMLElement) {
 
 interface ReadingExportActionsProps {
   targetRef: RefObject<HTMLElement | null>;
-  title: string;
   filePrefix: string;
   disabled?: boolean;
 }
 
 /**
- * 将指定的、无操作控件的解读内容导出为单张纵向 PNG。
- * 移动端优先调用 Web Share API；不可用时自动下载图片。
+ * 将当前选中的解读内容导出为单张纵向 PNG。
  */
 export function ReadingExportActions({
   targetRef,
-  title,
   filePrefix,
   disabled = false,
 }: ReadingExportActionsProps) {
@@ -104,86 +99,36 @@ export function ReadingExportActions({
     }
   };
 
-  const shareLongImage = async () => {
-    const target = targetRef.current;
-    if (!target || disabled || status === 'generating') return;
-    beginGeneration();
-    try {
-      const blob = await createReadingImage(target);
-      const fileName = `${filePrefix}-${new Date().toISOString().slice(0, 10)}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
-      const shareData = { files: [file], title, text: '六爻占卜解读（仅供文化研究与娱乐参考）' };
-      const canNativeShare = typeof navigator.share === 'function'
-        && (typeof navigator.canShare !== 'function' || navigator.canShare(shareData));
-
-      if (canNativeShare) {
-        try {
-          await navigator.share(shareData);
-          setStatus('shared');
-          return;
-        } catch (shareError) {
-          if (shareError instanceof DOMException && shareError.name === 'AbortError') {
-            setStatus('cancelled');
-            return;
-          }
-          // 浏览器宣称支持但实际失败时，仍为用户降级为本地 PNG。
-        }
-      }
-
-      // 浏览器不支持文件分享时仍保证用户能拿到 PNG。
-      downloadBlob(blob, fileName);
-      setStatus('downloaded');
-    } catch (error) {
-      failGeneration(error);
-    }
-  };
-
   const statusText = getStatusText(status, errorMessage);
-  const canShare = typeof navigator.share === 'function';
 
   return (
-    <div data-export-ignore="true" className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(175,135,55,0.14)' }}>
-      <div className={canShare ? 'grid grid-cols-2 gap-2' : ''}>
-        <button
-          type="button"
-          onClick={saveLongImage}
-          disabled={disabled || status === 'generating'}
-          className="w-full min-h-10 flex items-center justify-center gap-2 rounded-sm transition-colors"
-          style={{
-            fontFamily: FANG_SONG,
-            fontSize: '0.78rem',
-            letterSpacing: '0.12em',
-            color: disabled || status === 'generating' ? 'rgba(120, 85, 20, 0.42)' : '#76521f',
-            background: disabled || status === 'generating' ? 'rgba(180, 150, 90, 0.09)' : 'rgba(255, 247, 220, 0.7)',
-            border: '1px solid rgba(160, 110, 35, 0.28)',
-          }}
-        >
-          <Download size={15} className={status === 'generating' ? 'animate-pulse' : ''} />
-          {status === 'generating' ? '生成中' : '保存长图'}
-        </button>
-        {canShare && (
-          <button
-            type="button"
-            onClick={shareLongImage}
-            disabled={disabled || status === 'generating'}
-            className="w-full min-h-10 flex items-center justify-center gap-2 rounded-sm transition-colors"
-            style={{
-              fontFamily: FANG_SONG,
-              fontSize: '0.78rem',
-              letterSpacing: '0.12em',
-              color: disabled || status === 'generating' ? 'rgba(120, 85, 20, 0.42)' : '#76521f',
-              background: disabled || status === 'generating' ? 'rgba(180, 150, 90, 0.09)' : 'rgba(255, 247, 220, 0.7)',
-              border: '1px solid rgba(160, 110, 35, 0.28)',
-            }}
-          >
-            <Share2 size={15} />
-            分享长图
-          </button>
-        )}
-      </div>
-      <p aria-live="polite" className="min-h-4 mt-2 text-center text-[0.68rem] leading-relaxed" style={{ fontFamily: FANG_SONG, color: status === 'error' ? '#9a3412' : 'rgba(105, 77, 37, 0.62)' }}>
-        {statusText ?? '电脑端保存 PNG；支持的手机浏览器可直接分享'}
-      </p>
+    <div
+      data-export-ignore="true"
+      className="mt-4 flex min-h-10 items-center justify-end gap-3 pt-3"
+      style={{ borderTop: '1px solid rgba(175,135,55,0.14)' }}
+    >
+      {statusText && (
+        <p aria-live="polite" className="text-right text-[0.68rem] leading-relaxed" style={{ fontFamily: FANG_SONG, color: status === 'error' ? '#9a3412' : 'rgba(105, 77, 37, 0.62)' }}>
+          {statusText}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={saveLongImage}
+        disabled={disabled || status === 'generating'}
+        className="min-h-9 min-w-[7.5rem] px-4 flex items-center justify-center gap-2 rounded-sm transition-colors"
+        style={{
+          fontFamily: FANG_SONG,
+          fontSize: '0.78rem',
+          letterSpacing: '0.12em',
+          color: disabled || status === 'generating' ? 'rgba(120, 85, 20, 0.42)' : '#76521f',
+          background: disabled || status === 'generating' ? 'rgba(180, 150, 90, 0.09)' : 'rgba(255, 247, 220, 0.7)',
+          border: '1px solid rgba(160, 110, 35, 0.28)',
+        }}
+      >
+        <Download size={15} className={status === 'generating' ? 'animate-pulse' : ''} />
+        {status === 'generating' ? '生成中' : '保存长图'}
+      </button>
     </div>
   );
 }

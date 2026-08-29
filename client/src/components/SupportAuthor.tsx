@@ -40,8 +40,6 @@ export function SupportAuthor() {
   return (
     <section
       data-export-ignore="true"
-      className="mt-5 pt-4"
-      style={{ borderTop: '1px solid rgba(175, 135, 55, 0.14)' }}
       aria-label="随喜支持作者"
     >
       <div className="flex items-center justify-center gap-2 text-center">
