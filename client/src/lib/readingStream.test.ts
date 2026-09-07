@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { streamReading, type ReadingStreamInput } from './readingStream';
+import { ReadingStreamError, streamReading, type ReadingStreamInput } from './readingStream';
 
 const input: ReadingStreamInput = {
   question: '测试问题',
@@ -50,5 +50,35 @@ describe('浏览器流式解读客户端', () => {
     )));
 
     await expect(streamReading(input, { onDelta: vi.fn() })).rejects.toThrow('解读生成超时');
+  });
+
+  it('自动重试前清空旧内容，并把错误编号带给页面', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response([
+      'event: delta\ndata: {"section":"integrated","text":"旧内容"}\n\n',
+      'event: reset\ndata: {"requestId":"LY-ABC123","attempt":2}\n\n',
+      'event: retry\ndata: {"requestId":"LY-ABC123","attempt":2}\n\n',
+      'event: delta\ndata: {"section":"integrated","text":"保留内容"}\n\n',
+      'event: error\ndata: {"message":"解读生成失败，请稍后重试。","requestId":"LY-ABC123","partialAvailable":true}\n\n',
+    ].join(''), {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })));
+
+    const events: string[] = [];
+    const error = await streamReading(input, {
+      onDelta: (section, text) => events.push(`${section}:${text}`),
+      onReset: () => events.push('reset'),
+      onRetry: attempt => events.push(`retry:${attempt}`),
+    }).catch(caught => caught);
+
+    expect(events).toEqual([
+      'integrated:旧内容',
+      'reset',
+      'retry:2',
+      'integrated:保留内容',
+    ]);
+    expect(error).toBeInstanceOf(ReadingStreamError);
+    expect(error).toMatchObject({ requestId: 'LY-ABC123', partialAvailable: true });
+    expect(error.message).toContain('错误编号：LY-ABC123');
   });
 });

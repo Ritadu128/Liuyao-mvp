@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { desc, eq, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
@@ -19,6 +20,20 @@ const DEFAULT_DEEPSEEK_TIMEOUT_MS = 60_000;
 
 function getTodayDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function createReadingRequestId(): string {
+  return `LY-${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
+}
+
+function logReadingEvent(
+  level: 'info' | 'error',
+  event: string,
+  fields: Record<string, unknown>,
+) {
+  const payload = JSON.stringify({ event, ...fields });
+  if (level === 'error') console.error(`[Reading] ${payload}`);
+  else console.info(`[Reading] ${payload}`);
 }
 
 function getDeepSeekTimeoutMs(): number {
@@ -42,7 +57,10 @@ class DeepSeekRequestError extends Error {
  * affectedRows 为 0 代表计数已满且本次没有递增；数据库不可用时必须失败关闭，
  * 不能绕过服务端每日限额。
  */
-async function checkAndIncrementIpLimit(ip: string): Promise<{ allowed: boolean; remaining: number }> {
+async function checkAndIncrementIpLimit(
+  ip: string,
+  date = getTodayDate(),
+): Promise<{ allowed: boolean; remaining: number }> {
   const db = await getDb();
   if (!db) {
     throw new TRPCError({
@@ -54,7 +72,7 @@ async function checkAndIncrementIpLimit(ip: string): Promise<{ allowed: boolean;
   try {
     const result = await db.execute(sql`
       INSERT INTO ${ipRateLimits} (${ipRateLimits.ip}, ${ipRateLimits.date}, ${ipRateLimits.count})
-      VALUES (${ip}, ${getTodayDate()}, 1)
+      VALUES (${ip}, ${date}, 1)
       ON DUPLICATE KEY UPDATE
         ${ipRateLimits.count} = IF(${ipRateLimits.count} < ${DAILY_LIMIT}, ${ipRateLimits.count} + 1, ${ipRateLimits.count}),
         ${ipRateLimits.updatedAt} = IF(${ipRateLimits.count} < ${DAILY_LIMIT}, CURRENT_TIMESTAMP, ${ipRateLimits.updatedAt})
@@ -75,6 +93,24 @@ async function checkAndIncrementIpLimit(ip: string): Promise<{ allowed: boolean;
       code: 'INTERNAL_SERVER_ERROR',
       message: '服务暂不可用，请稍后再试。',
     });
+  }
+}
+
+async function refundIpLimit(ip: string, date: string): Promise<boolean> {
+  try {
+    const db = await getDb();
+    if (!db) return false;
+    await db.execute(sql`
+      UPDATE ${ipRateLimits}
+      SET ${ipRateLimits.count} = GREATEST(${ipRateLimits.count} - 1, 0),
+          ${ipRateLimits.updatedAt} = CURRENT_TIMESTAMP
+      WHERE ${ipRateLimits.ip} = ${ip}
+        AND ${ipRateLimits.date} = ${date}
+        AND ${ipRateLimits.count} > 0
+    `);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -112,7 +148,7 @@ async function callDeepSeek(messages: { role: 'system' | 'user'; content: string
         model: ENV.deepseekModel,
         messages,
         temperature: 0.7,
-        max_tokens: 2_048,
+        max_tokens: 4_096,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
@@ -321,31 +357,42 @@ async function writeDevelopmentMockStream(res: Response) {
 
 /** 独立的 POST + SSE 接口：让浏览器在模型仍生成时就逐字收到解读。 */
 export async function handleReadingStream(req: Request, res: Response, ctx: TrpcContext) {
+  const requestId = createReadingRequestId();
+  res.setHeader('X-Request-ID', requestId);
   const parsedInput = GenerateInputSchema.safeParse(req.body);
   if (!parsedInput.success) {
-    return res.status(400).json({ error: '占卜参数格式无效，请重新起卦。' });
+    logReadingEvent('error', 'invalid_input', { requestId });
+    return res.status(400).json({ error: '占卜参数格式无效，请重新起卦。', requestId });
   }
   if (process.env.NODE_ENV === 'development' && process.env.MOCK_READING_STREAM === 'true') {
     await writeDevelopmentMockStream(res);
     return;
   }
   if (!ENV.deepseekApiKey) {
-    return res.status(412).json({ error: '解读服务尚未配置，请稍后再试。' });
+    logReadingEvent('error', 'missing_api_key', { requestId });
+    return res.status(412).json({ error: '解读服务尚未配置，请稍后再试。', requestId });
   }
 
+  const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
+  const rateLimitDate = getTodayDate();
+  let rateLimitConsumed = false;
   let rateCheck: { allowed: boolean; remaining: number };
   try {
-    const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
-    rateCheck = await checkAndIncrementIpLimit(clientIp);
+    rateCheck = await checkAndIncrementIpLimit(clientIp, rateLimitDate);
     if (!rateCheck.allowed) {
       throw new TRPCError({
         code: 'TOO_MANY_REQUESTS',
         message: `今日占卜次数已达上限（每天最多 ${DAILY_LIMIT} 次），明日再来。`,
       });
     }
+    rateLimitConsumed = true;
   } catch (error) {
     const publicError = error instanceof TRPCError ? error : getDeepSeekError(error);
-    return res.status(getHttpStatus(publicError)).json({ error: publicError.message });
+    logReadingEvent('error', 'rate_limit_rejected', {
+      requestId,
+      code: publicError.code,
+    });
+    return res.status(getHttpStatus(publicError)).json({ error: publicError.message, requestId });
   }
 
   beginSseResponse(res);
@@ -356,23 +403,63 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
   };
   res.once('close', abortOnDisconnect);
 
+  const attemptPartials: Array<Record<ReadingSection, string>> = [];
   try {
-    const generated = await streamDeepSeekReading({
-      apiKey: ENV.deepseekApiKey,
-      model: ENV.deepseekModel,
-      messages: [
-        {
-          role: 'system',
-          content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
-        },
-        { role: 'user', content: buildPrompt(parsedInput.data) },
-      ],
-      timeoutMs: getDeepSeekTimeoutMs(),
-      signal: disconnectController.signal,
-      onDelta: (section: ReadingSection, text: string) => {
-        writeSseEvent(res, 'delta', { section, text });
-      },
-    });
+    let generated: Awaited<ReturnType<typeof streamDeepSeekReading>> | null = null;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const partial: Record<ReadingSection, string> = { integrated: '', hexagram: '' };
+      attemptPartials.push(partial);
+      if (attempt > 1) {
+        writeSseEvent(res, 'reset', { requestId, attempt });
+        writeSseEvent(res, 'retry', { requestId, attempt });
+      }
+
+      try {
+        generated = await streamDeepSeekReading({
+          apiKey: ENV.deepseekApiKey,
+          model: ENV.deepseekModel,
+          messages: [
+            {
+              role: 'system',
+              content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
+            },
+            { role: 'user', content: buildPrompt(parsedInput.data) },
+          ],
+          timeoutMs: getDeepSeekTimeoutMs(),
+          signal: disconnectController.signal,
+          onDelta: (section: ReadingSection, text: string) => {
+            partial[section] += text;
+            writeSseEvent(res, 'delta', { section, text });
+          },
+        });
+        logReadingEvent('info', 'upstream_complete', {
+          requestId,
+          attempt,
+          model: ENV.deepseekModel,
+          ...generated.diagnostics,
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        const streamError = error instanceof DeepSeekStreamError ? error : null;
+        const cause = streamError?.cause;
+        const causeCode = typeof cause === 'object' && cause !== null && 'code' in cause
+          ? String((cause as { code?: unknown }).code ?? '') || null
+          : null;
+        logReadingEvent('error', 'upstream_failed', {
+          requestId,
+          attempt,
+          kind: streamError?.kind ?? 'unknown',
+          causeCode,
+          ...streamError?.diagnostics,
+        });
+        if (attempt === 2 || disconnectController.signal.aborted) break;
+      }
+    }
+
+    if (!generated) throw lastError ?? new DeepSeekStreamError('upstream');
 
     const validated = DeepSeekReadingSchema.safeParse(generated);
     if (!validated.success) throw new DeepSeekStreamError('invalid_response');
@@ -382,11 +469,43 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       hexagramReading: validated.data.hexagram_reading,
       readingId,
       remaining: rateCheck.remaining,
+      requestId,
     });
+    logReadingEvent('info', 'request_complete', { requestId });
   } catch (error) {
+    if (rateLimitConsumed) {
+      const refunded = await refundIpLimit(clientIp, rateLimitDate);
+      logReadingEvent(refunded ? 'info' : 'error', 'quota_refund', { requestId, refunded });
+      rateLimitConsumed = false;
+    }
     if (!disconnectController.signal.aborted) {
       const publicError = getDeepSeekError(error);
-      writeSseEvent(res, 'error', { message: publicError.message });
+      const currentPartial = attemptPartials.at(-1) ?? { integrated: '', hexagram: '' };
+      const bestPartial = attemptPartials.reduce((best, candidate) => {
+        const bestLength = best.integrated.length + best.hexagram.length;
+        const candidateLength = candidate.integrated.length + candidate.hexagram.length;
+        return candidateLength > bestLength ? candidate : best;
+      }, currentPartial);
+      if (bestPartial !== currentPartial) {
+        writeSseEvent(res, 'reset', { requestId, attempt: 'restore' });
+        if (bestPartial.integrated) {
+          writeSseEvent(res, 'delta', { section: 'integrated', text: bestPartial.integrated });
+        }
+        if (bestPartial.hexagram) {
+          writeSseEvent(res, 'delta', { section: 'hexagram', text: bestPartial.hexagram });
+        }
+      }
+      const partialAvailable = bestPartial.integrated.length > 0 || bestPartial.hexagram.length > 0;
+      writeSseEvent(res, 'error', {
+        message: publicError.message,
+        requestId,
+        partialAvailable,
+      });
+      logReadingEvent('error', 'request_failed', {
+        requestId,
+        code: publicError.code,
+        partialAvailable,
+      });
     }
   } finally {
     res.off('close', abortOnDisconnect);

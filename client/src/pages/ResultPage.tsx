@@ -91,6 +91,12 @@ export default function ResultPage() {
             setHexagramReading(hexagramBufferRef.current);
           }
         },
+        onReset: () => {
+          integratedBufferRef.current = '';
+          hexagramBufferRef.current = '';
+          setIntegratedReading('');
+          setHexagramReading('');
+        },
       }).then(data => {
         setIntegratedReading(data.integratedReading);
         setHexagramReading(data.hexagramReading);
@@ -384,18 +390,21 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
     <ScrollCard>
       <ScrollDivider label="综合解读" />
       <div className="mt-4 min-h-[160px]">
-        {error ? (
+        {reading ? (
+          <>
+            <div
+              className="leading-[2.2] prose prose-stone prose-sm max-w-none ancient-reading-content"
+              style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
+            >
+              <SafeMarkdown>{reading}</SafeMarkdown>
+              {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
+            </div>
+            {error && <PartialReadingWarning error={error} />}
+          </>
+        ) : error ? (
           <div className="py-6 text-center space-y-2" style={{ fontFamily: FANG_SONG }}>
             <div className="text-2xl">{error.includes('次数已达上限') ? '☄' : '✶'}</div>
             <div className="text-sm tracking-wide" style={{ color: '#8b5a2b' }}>{error}</div>
-          </div>
-        ) : reading ? (
-          <div
-            className="leading-[2.2] prose prose-stone prose-sm max-w-none ancient-reading-content"
-            style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
-          >
-            <SafeMarkdown>{reading}</SafeMarkdown>
-            {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
           </div>
         ) : isLoading ? <AncientLoading text="正在起卦解读…" /> : null}
       </div>
@@ -424,18 +433,21 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
       <ScrollCard>
         <ScrollDivider label="卦象解读" />
         <div className="mt-4 min-h-[160px]">
-          {error ? (
+          {reading ? (
+            <>
+              <div
+                className="leading-[2.2] prose prose-stone prose-sm max-w-none ancient-reading-content"
+                style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
+              >
+                <SafeMarkdown>{reading}</SafeMarkdown>
+                {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
+              </div>
+              {error && <PartialReadingWarning error={error} />}
+            </>
+          ) : error ? (
             <div className="py-6 text-center space-y-2" style={{ fontFamily: FANG_SONG }}>
               <div className="text-2xl">{error.includes('次数已达上限') ? '☄' : '✶'}</div>
               <div className="text-sm tracking-wide" style={{ color: '#8b5a2b' }}>{error}</div>
-            </div>
-          ) : reading ? (
-            <div
-              className="leading-[2.2] prose prose-stone prose-sm max-w-none ancient-reading-content"
-              style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
-            >
-              <SafeMarkdown>{reading}</SafeMarkdown>
-              {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
             </div>
           ) : isLoading ? <AncientLoading text="正在生成卦象解读…" /> : null}
         </div>
@@ -482,6 +494,22 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
           </ScrollCard>
         </div>
       )}
+    </div>
+  );
+}
+
+function PartialReadingWarning({ error }: { error: string }) {
+  return (
+    <div
+      className="mt-5 px-3 py-2 text-xs leading-relaxed tracking-wide"
+      style={{
+        fontFamily: FANG_SONG,
+        color: '#8b5a2b',
+        background: 'rgba(255,248,225,0.72)',
+        border: '1px solid rgba(175,120,35,0.2)',
+      }}
+    >
+      以上为中断前已生成的内容。{error}
     </div>
   );
 }

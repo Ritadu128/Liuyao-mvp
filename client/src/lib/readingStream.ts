@@ -22,7 +22,19 @@ export type ReadingStreamResult = {
 type ReadingStreamOptions = {
   signal?: AbortSignal;
   onDelta: (section: 'integrated' | 'hexagram', text: string) => void;
+  onReset?: () => void;
+  onRetry?: (attempt: number) => void;
 };
+
+export class ReadingStreamError extends Error {
+  constructor(
+    message: string,
+    public readonly requestId?: string,
+    public readonly partialAvailable = false,
+  ) {
+    super(requestId ? `${message}（错误编号：${requestId}）` : message);
+  }
+}
 
 function getEventPayload(block: string) {
   let event = 'message';
@@ -38,7 +50,7 @@ function getEventPayload(block: string) {
 
 export async function streamReading(
   input: ReadingStreamInput,
-  { signal, onDelta }: ReadingStreamOptions,
+  { signal, onDelta, onReset, onRetry }: ReadingStreamOptions,
 ): Promise<ReadingStreamResult> {
   const response = await fetch('/api/reading/stream', {
     method: 'POST',
@@ -49,8 +61,14 @@ export async function streamReading(
   });
 
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(body?.error ?? '解读生成失败，请稍后重试。');
+    const body = await response.json().catch(() => null) as {
+      error?: string;
+      requestId?: string;
+    } | null;
+    throw new ReadingStreamError(
+      body?.error ?? '解读生成失败，请稍后重试。',
+      body?.requestId ?? response.headers.get('x-request-id') ?? undefined,
+    );
   }
   if (!response.body) throw new Error('当前浏览器不支持流式解读。');
 
@@ -82,8 +100,20 @@ export async function streamReading(
       };
       return;
     }
+    if (payload.event === 'reset') {
+      onReset?.();
+      return;
+    }
+    if (payload.event === 'retry') {
+      if (typeof parsed.attempt === 'number') onRetry?.(parsed.attempt);
+      return;
+    }
     if (payload.event === 'error') {
-      throw new Error(typeof parsed.message === 'string' ? parsed.message : '解读生成失败，请稍后重试。');
+      throw new ReadingStreamError(
+        typeof parsed.message === 'string' ? parsed.message : '解读生成失败，请稍后重试。',
+        typeof parsed.requestId === 'string' ? parsed.requestId : undefined,
+        parsed.partialAvailable === true,
+      );
     }
   };
 
