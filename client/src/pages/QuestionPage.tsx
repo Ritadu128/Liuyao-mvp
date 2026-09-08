@@ -4,7 +4,7 @@ import { useDivination } from '@/contexts/DivinationContext';
 import type { LineValue } from '@/lib/liuyao';
 import {
   FANG_SONG, SONG,
-  CloudPattern, ScrollCard, ScrollDivider, WaveLine, SealButton, Disclaimer,
+  ScrollCard, ScrollDivider, WaveLine, SealButton, Disclaimer,
 } from '@/components/ScrollUI';
 
 const IS_DEV = import.meta.env.DEV;
@@ -59,9 +59,6 @@ export default function QuestionPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 relative overflow-hidden">
-
-      {/* 云纹背景 */}
-      <CloudPattern opacity={0.04} />
 
       {/* 大字背景装饰 */}
       <div className="absolute inset-0 pointer-events-none select-none">
