@@ -13,7 +13,7 @@ html { touch-action: manipulation; }
 body {
   background: #f7f1e5;
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", serif;
+  font-family: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
@@ -88,7 +88,13 @@ textarea { display: block; width: 100%; min-height: 126px; padding: 14px; resize
 .reading-note { margin-top: 14px !important; color: #9a8a73 !important; font-size: 11px !important; }
 .is-hidden { display: none !important; }
 .result-actions { max-width: 520px; margin: 18px auto 0; }
+.result-actions .secondary-button { margin-top: 0; background: rgba(255, 251, 238, 0.94); color: #785a19; }
+.result-actions .secondary-button + .secondary-button { margin-top: 12px; }
 .status { min-height: 30px; margin: 12px auto 0; color: #836524; text-align: center; font-size: 12px; line-height: 1.6; }
+.full-version { max-width: 720px; margin: 22px auto 0; padding: 22px 20px; border: 1px solid rgba(165, 124, 42, 0.2); border-radius: 10px; background: rgba(255, 252, 243, 0.74); color: #756247; text-align: center; }
+.full-version .section-title { margin-bottom: 12px; }
+.full-version p { margin: 7px 0; font-size: 13px; line-height: 1.8; }
+.full-version .site-url { margin-top: 10px; color: #8b650f; font-size: 19px; letter-spacing: 0.08em; -webkit-user-select: text; user-select: text; }
 .history-list { max-width: 720px; margin: 0 auto; }
 .history-empty { padding: 90px 0; color: #9c8b73; text-align: center; }
 .history-item { margin-bottom: 12px; padding: 18px; border: 1px solid rgba(165, 124, 42, 0.22); border-radius: 10px; background: rgba(255, 252, 243, 0.92); }
@@ -99,7 +105,7 @@ textarea { display: block; width: 100%; min-height: 126px; padding: 14px; resize
   .view { padding-left: 28px; padding-right: 28px; }
   .hero { padding-top: 80px; }
   .result-actions { display: flex; }
-  .result-actions .secondary-button { margin-top: 0; margin-left: 12px; }
+  .result-actions .secondary-button + .secondary-button { margin-top: 0; margin-left: 12px; }
 }
 @media (max-width: 360px) {
   .hero h1 { font-size: 38px; }

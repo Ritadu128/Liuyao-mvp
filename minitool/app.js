@@ -18,8 +18,17 @@
   function changedIsYang(value) { return isMoving(value) ? !isYang(value) : isYang(value); }
   function lineName(position) { return ["初爻", "二爻", "三爻", "四爻", "五爻", "上爻"][position - 1]; }
 
+  function randomCoin() {
+    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+      var randomByte = new Uint8Array(1);
+      window.crypto.getRandomValues(randomByte);
+      return randomByte[0] < 128 ? 1 : 0;
+    }
+    return Math.random() < 0.5 ? 1 : 0;
+  }
+
   function tossLine() {
-    var coins = [0, 0, 0].map(function () { return Math.random() < 0.5 ? 1 : 0; });
+    var coins = [randomCoin(), randomCoin(), randomCoin()];
     var value = coins.reduce(function (sum, coin) { return sum + (coin ? 3 : 2); }, 0);
     return { coins: coins, value: value };
   }
@@ -243,19 +252,19 @@
     ctx.fillStyle = "#3d3023";
     ctx.font = "58px serif";
     ctx.fillText(result.original.name + (result.originalBits !== result.changedBits ? "　→　" + result.changed.name : ""), 540, 250);
-    ctx.font = "30px sans-serif";
+    ctx.font = "30px serif";
     ctx.fillStyle = "#796548";
     var y = drawWrappedText(ctx, "所问：" + state.question, 540, 340, 850, 48) + 30;
     ctx.textAlign = "left";
     ctx.fillStyle = "#9a7114";
-    ctx.font = "30px sans-serif";
+    ctx.font = "30px serif";
     ctx.fillText("卦辞", 120, y);
     y += 52;
     ctx.fillStyle = "#3d3023";
     ctx.font = "34px serif";
     y = drawWrappedText(ctx, result.original.gua_ci, 120, y, 840, 54) + 44;
     ctx.fillStyle = "#9a7114";
-    ctx.font = "30px sans-serif";
+    ctx.font = "30px serif";
     ctx.fillText("象曰", 120, y);
     y += 52;
     ctx.fillStyle = "#3d3023";
@@ -263,7 +272,7 @@
     y = drawWrappedText(ctx, result.original.xiang_yue, 120, y, 840, 54) + 44;
     if (result.moving.length) {
       ctx.fillStyle = "#9a7114";
-      ctx.font = "30px sans-serif";
+      ctx.font = "30px serif";
       ctx.fillText("动爻", 120, y);
       y += 52;
       ctx.fillStyle = "#3d3023";
@@ -274,7 +283,7 @@
     }
     ctx.textAlign = "center";
     ctx.fillStyle = "#9a8a73";
-    ctx.font = "24px sans-serif";
+    ctx.font = "24px serif";
     ctx.fillText("《周易》文化研究与娱乐参考 · 请结合实际独立判断", 540, 2280);
     return canvas.toDataURL("image/png");
   }
