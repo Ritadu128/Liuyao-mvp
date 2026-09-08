@@ -360,6 +360,20 @@
       byId("question-count").textContent = String(event.target.value.length);
       byId("question-error").textContent = "";
     });
+    byId("question").addEventListener("keydown", function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        beginQuestion();
+      }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".example-question"), function (button) {
+      button.addEventListener("click", function () {
+        byId("question").value = button.textContent;
+        byId("question-count").textContent = String(button.textContent.length);
+        byId("question-error").textContent = "";
+        byId("question").focus();
+      });
+    });
     byId("start-button").addEventListener("click", beginQuestion);
     byId("throw-once").addEventListener("click", handleThrowOnce);
     byId("throw-all").addEventListener("click", handleThrowAll);

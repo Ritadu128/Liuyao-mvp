@@ -5,23 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>众见六爻</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./assets/style.css?v=20260908-3" />
+  <link rel="stylesheet" href="./assets/style.css?v=20260908-4" />
 </head>
 <body>
   <main id="app" class="app-shell">
     <section id="question-view" class="view is-active" aria-labelledby="brand-title">
-      <header class="hero">
+      <section class="paper-card question-card question-panel">
         <p class="eyebrow"><span></span>众见六爻<span></span></p>
-        <h1 id="brand-title">心诚则灵</h1>
-        <p class="hero-copy">静心凝神，将心中所问化为文字<br />天地自有感应，卦象自然呈现</p>
-      </header>
-      <section class="paper-card question-card">
-        <p class="section-title">问　卦</p>
-        <label for="question">您的占问</label>
+        <h1 id="brand-title" class="section-title">问　卦</h1>
+        <label for="question"><span class="label-mark">◇</span> 您的占卜问题</label>
         <textarea id="question" maxlength="200" rows="4" placeholder="请将心中所问，化为文字……"></textarea>
         <div class="field-meta">
-          <p id="question-error" class="error" aria-live="polite"></p>
+          <p><span class="shortcut-hint">Ctrl+Enter 快速开始</span><span id="question-error" class="error" aria-live="polite"></span></p>
           <p><span id="question-count">0</span>/200</p>
+        </div>
+        <div class="example-block">
+          <p class="example-title"><span></span>示例问题<span></span></p>
+          <div class="example-list">
+            <button class="example-question" type="button">此次求职能否顺利？</button>
+            <button class="example-question" type="button">近期感情运势如何？</button>
+            <button class="example-question" type="button">这笔投资是否值得？</button>
+            <button class="example-question" type="button">家人的病情会好转吗？</button>
+          </div>
         </div>
         <button id="start-button" class="primary-button" type="button">诚心起卦</button>
       </section>
@@ -111,6 +116,6 @@
     </section>
   </main>
   <script src="./assets/hexagrams.js"></script>
-  <script src="./assets/app.js?v=20260908-3"></script>
+  <script src="./assets/app.js?v=20260908-4"></script>
 </body>
 </html>
