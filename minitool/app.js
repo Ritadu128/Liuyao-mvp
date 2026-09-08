@@ -103,7 +103,6 @@
   }
 
   function handleThrowAll() {
-    if (!confirm("确定一键生成六爻吗？")) return;
     state.throws = [];
     for (var i = 0; i < 6; i += 1) state.throws.push(tossLine());
     byId("line-result").textContent = "六爻已成";

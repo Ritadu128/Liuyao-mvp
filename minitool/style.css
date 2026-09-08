@@ -43,7 +43,7 @@ textarea { display: block; width: 100%; min-height: 126px; padding: 14px; resize
 .field-meta p { margin: 0; }
 .error { color: var(--red); }
 .primary-button, .secondary-button, .text-button, .nav-button { min-height: 46px; border-radius: 7px; cursor: pointer; }
-.primary-button { width: 100%; border: 1px solid #94701c; background: linear-gradient(110deg, #8b650f, #c29b32, #8b650f); color: #171109; font-weight: 600; letter-spacing: 0.22em; }
+.primary-button { width: 100%; border: 1px solid rgba(166, 126, 39, 0.48); background: linear-gradient(110deg, #fffaf0, #f4e4b8, #fffaf0); color: #6f531b; font-weight: 600; letter-spacing: 0.22em; box-shadow: inset 0 0 0 3px rgba(255, 252, 242, 0.75); }
 .secondary-button { width: 100%; margin-top: 12px; border: 1px solid rgba(148, 112, 28, 0.45); background: rgba(255, 251, 238, 0.9); color: #785a19; letter-spacing: 0.12em; }
 .primary-button:active, .secondary-button:active, .text-button:active, .nav-button:active { opacity: 0.72; }
 .text-button { display: block; margin: 20px auto 0; padding: 0 18px; border: 0; background: transparent; color: #94701c; }
