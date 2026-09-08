@@ -13,5 +13,5 @@ function normalizeHttpsUrl(value: string | undefined): string | null {
 export const PUBLIC_CONFIG = {
   contactEmail: import.meta.env.VITE_CONTACT_EMAIL?.trim() || 'ritadu1128@gmail.com',
   kofiUrl: normalizeHttpsUrl(import.meta.env.VITE_KOFI_URL) || 'https://ko-fi.com/rita128128',
-  policyUpdatedAt: '2026-08-28',
+  policyUpdatedAt: '2026-09-07',
 };

@@ -410,7 +410,7 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
       </div>
       <ReadingExportActions
         targetRef={exportTargetRef}
-        filePrefix="六爻-综合解读"
+        filePrefix="众见六爻-综合解读"
         disabled={!reading || isLoading || Boolean(error)}
       />
     </ScrollCard>
@@ -453,7 +453,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
         </div>
         <ReadingExportActions
           targetRef={exportTargetRef}
-          filePrefix="六爻-卦象解读"
+          filePrefix="众见六爻-卦象解读"
           disabled={!reading || isLoading || Boolean(error)}
         />
       </ScrollCard>

@@ -88,7 +88,7 @@ export default function QuestionPage() {
           <div className="inline-flex items-center gap-3 mb-4">
             <WaveLine />
             <span className="text-amber-700/60 text-[0.78rem] tracking-[0.4em]" style={{ fontFamily: FANG_SONG }}>
-              六爻占卜
+              众见六爻
             </span>
             <WaveLine flip />
           </div>
