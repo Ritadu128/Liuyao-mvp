@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>众见六爻</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./assets/style.css?v=20260908-2" />
+  <link rel="stylesheet" href="./assets/style.css?v=20260908-3" />
 </head>
 <body>
   <main id="app" class="app-shell">
@@ -25,8 +25,8 @@
         </div>
         <button id="start-button" class="primary-button" type="button">诚心起卦</button>
       </section>
-      <button id="history-button" class="text-button" type="button">查看本机卦录</button>
-      <p class="privacy-note">离线运行 · 问题仅保存在当前小工具内</p>
+      <button id="history-button" class="text-button" type="button">查看我的往卦</button>
+      <p class="privacy-note">离线运行，问题历史仅保存在当前小工具内</p>
     </section>
 
     <section id="throw-view" class="view" aria-labelledby="throw-title">
@@ -53,7 +53,7 @@
       <header class="topbar">
         <button id="result-back" class="nav-button" type="button">← 重新占卜</button>
         <h2 id="result-title">卦象解读</h2>
-        <span></span>
+        <button id="result-history" class="nav-button right" type="button">我的往卦</button>
       </header>
       <section id="result-card" class="paper-card result-card">
         <p id="result-question" class="result-question"></p>
@@ -88,29 +88,29 @@
           <p class="reading-note">本页为离线经文与观卦提示，仅供《周易》文化研究和娱乐参考，不构成专业意见。</p>
         </div>
       </section>
+      <aside class="full-version">
+        <p class="section-title">体验完整版</p>
+        <p>小工具版本不支持 AI 综合解读和摄像头手势投掷功能。</p>
+        <p>如需体验完整功能，请在浏览器访问：</p>
+        <p class="site-url">liuyao.win</p>
+      </aside>
       <div class="result-actions">
         <button id="save-image" class="secondary-button" type="button">保存结果到相册</button>
         <button id="post-note" class="secondary-button" type="button">发布小红书笔记</button>
       </div>
       <p id="bridge-status" class="status" aria-live="polite"></p>
-      <aside class="full-version">
-        <p class="section-title">体验完整版</p>
-        <p>受小红书小工具离线与运行能力限制，本版本暂不包含 AI 综合解读和摄像头手势投掷。</p>
-        <p>如需体验完整功能，请在浏览器访问：</p>
-        <p class="site-url">liuyao.win</p>
-      </aside>
     </section>
 
     <section id="history-view" class="view" aria-labelledby="history-title">
       <header class="topbar">
         <button id="history-back" class="nav-button" type="button">← 返回</button>
-        <h2 id="history-title">本机卦录</h2>
+        <h2 id="history-title">我的往卦</h2>
         <button id="clear-history" class="nav-button right" type="button">清空</button>
       </header>
       <div id="history-list" class="history-list"></div>
     </section>
   </main>
   <script src="./assets/hexagrams.js"></script>
-  <script src="./assets/app.js?v=20260908-2"></script>
+  <script src="./assets/app.js?v=20260908-3"></script>
 </body>
 </html>

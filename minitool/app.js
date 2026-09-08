@@ -3,7 +3,7 @@
 
   var DATA = window.ZHONGJIAN_HEXAGRAMS;
   var HISTORY_KEY = "zhongjian_liuyao_minitool_history_v1";
-  var state = { question: "", throws: [], result: null };
+  var state = { question: "", throws: [], result: null, historyReturnView: "question" };
   var views = ["question", "throw", "result", "history"];
 
   function byId(id) { return document.getElementById(id); }
@@ -68,7 +68,15 @@
     byId("throw-once").textContent = count < 6 ? "投第 " + (count + 1) + " 爻" : "查看卦象";
     var stack = byId("line-stack");
     stack.textContent = "";
-    state.throws.slice().reverse().forEach(function (item) { stack.appendChild(makeLine(item.value, "mini-line")); });
+    for (var position = 5; position >= 0; position -= 1) {
+      if (state.throws[position]) {
+        stack.appendChild(makeLine(state.throws[position].value, "mini-line"));
+      } else {
+        var placeholder = document.createElement("div");
+        placeholder.className = "mini-line is-yang is-placeholder";
+        stack.appendChild(placeholder);
+      }
+    }
   }
 
   function animateCoins(result, callback) {
@@ -220,6 +228,12 @@
     });
   }
 
+  function openHistory(returnView) {
+    state.historyReturnView = returnView;
+    renderHistory();
+    showView("history");
+  }
+
   function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
     var line = "";
     var lines = [];
@@ -351,8 +365,9 @@
     byId("throw-all").addEventListener("click", handleThrowAll);
     byId("throw-back").addEventListener("click", function () { showView("question"); });
     byId("result-back").addEventListener("click", function () { showView("question"); });
-    byId("history-button").addEventListener("click", function () { renderHistory(); showView("history"); });
-    byId("history-back").addEventListener("click", function () { showView("question"); });
+    byId("history-button").addEventListener("click", function () { openHistory("question"); });
+    byId("result-history").addEventListener("click", function () { openHistory("result"); });
+    byId("history-back").addEventListener("click", function () { showView(state.historyReturnView); });
     byId("clear-history").addEventListener("click", function () {
       if (confirm("确定清空当前小工具内的全部卦录吗？")) { localStorage.removeItem(HISTORY_KEY); renderHistory(); }
     });
