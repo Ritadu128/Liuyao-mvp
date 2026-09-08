@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>众见六爻</title>
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./assets/style.css" />
+</head>
+<body>
+  <main id="app" class="app-shell">
+    <section id="question-view" class="view is-active" aria-labelledby="brand-title">
+      <header class="hero">
+        <p class="eyebrow"><span></span>众见六爻<span></span></p>
+        <h1 id="brand-title">心诚则灵</h1>
+        <p class="hero-copy">静心凝神，将心中所问化为文字<br />天地自有感应，卦象自然呈现</p>
+      </header>
+      <section class="paper-card question-card">
+        <p class="section-title">问　卦</p>
+        <label for="question">您的占问</label>
+        <textarea id="question" maxlength="200" rows="4" placeholder="请将心中所问，化为文字……"></textarea>
+        <div class="field-meta">
+          <p id="question-error" class="error" aria-live="polite"></p>
+          <p><span id="question-count">0</span>/200</p>
+        </div>
+        <button id="start-button" class="primary-button" type="button">诚心起卦</button>
+      </section>
+      <button id="history-button" class="text-button" type="button">查看本机卦录</button>
+      <p class="privacy-note">离线运行 · 问题仅保存在当前小工具内</p>
+    </section>
+
+    <section id="throw-view" class="view" aria-labelledby="throw-title">
+      <header class="topbar">
+        <button id="throw-back" class="nav-button" type="button">← 重问</button>
+        <h2 id="throw-title">静心投掷</h2>
+        <p id="throw-count">第 1 / 6 爻</p>
+      </header>
+      <div class="casting-stage">
+        <p id="current-question" class="current-question"></p>
+        <div class="coins" aria-hidden="true">
+          <span class="coin"></span><span class="coin"></span><span class="coin"></span>
+        </div>
+        <p id="line-result" class="line-result">点击下方按钮开始投掷</p>
+        <div id="line-stack" class="line-stack" aria-label="已投出的爻"></div>
+      </div>
+      <div class="throw-actions">
+        <button id="throw-once" class="primary-button" type="button">投第 1 爻</button>
+        <button id="throw-all" class="secondary-button" type="button">一键成卦</button>
+      </div>
+    </section>
+
+    <section id="result-view" class="view" aria-labelledby="result-title">
+      <header class="topbar">
+        <button id="result-back" class="nav-button" type="button">← 重新占卜</button>
+        <h2 id="result-title">卦象解读</h2>
+        <span></span>
+      </header>
+      <section id="result-card" class="paper-card result-card">
+        <p id="result-question" class="result-question"></p>
+        <div class="hexagram-summary">
+          <div class="hexagram-column">
+            <p class="small-label">本卦</p>
+            <div id="original-lines" class="hexagram-lines"></div>
+            <h3 id="original-name"></h3>
+          </div>
+          <div id="change-arrow" class="change-arrow">→</div>
+          <div id="changed-column" class="hexagram-column">
+            <p class="small-label">变卦</p>
+            <div id="changed-lines" class="hexagram-lines"></div>
+            <h3 id="changed-name"></h3>
+          </div>
+        </div>
+        <p id="moving-lines" class="moving-lines"></p>
+        <div class="classic-block">
+          <p class="section-title">本卦经文</p>
+          <h4>卦辞</h4><p id="gua-ci"></p>
+          <h4>象曰</h4><p id="xiang-yue"></p>
+          <div id="yao-ci-list"></div>
+        </div>
+        <div id="changed-classic" class="classic-block is-hidden">
+          <p class="section-title">变卦参考</p>
+          <h4>卦辞</h4><p id="changed-gua-ci"></p>
+          <h4>象曰</h4><p id="changed-xiang-yue"></p>
+        </div>
+        <div class="offline-reading">
+          <p class="section-title">观卦提示</p>
+          <p id="offline-reading"></p>
+          <p class="reading-note">本页为离线经文与观卦提示，仅供《周易》文化研究和娱乐参考，不构成专业意见。</p>
+        </div>
+      </section>
+      <div class="result-actions">
+        <button id="save-image" class="primary-button" type="button">保存结果到相册</button>
+        <button id="post-note" class="secondary-button" type="button">发布小红书笔记</button>
+      </div>
+      <p id="bridge-status" class="status" aria-live="polite"></p>
+    </section>
+
+    <section id="history-view" class="view" aria-labelledby="history-title">
+      <header class="topbar">
+        <button id="history-back" class="nav-button" type="button">← 返回</button>
+        <h2 id="history-title">本机卦录</h2>
+        <button id="clear-history" class="nav-button right" type="button">清空</button>
+      </header>
+      <div id="history-list" class="history-list"></div>
+    </section>
+  </main>
+  <script src="./assets/hexagrams.js"></script>
+  <script src="./assets/app.js"></script>
+</body>
+</html>
