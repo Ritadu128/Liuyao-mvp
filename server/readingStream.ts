@@ -14,6 +14,10 @@ export type DeepSeekStreamDiagnostics = {
   finishReason: string | null;
   receivedDone: boolean;
   durationMs: number;
+  promptTokens: number;
+  promptCacheHitTokens: number;
+  promptCacheMissTokens: number;
+  completionTokens: number;
 };
 
 export type StreamedReadingResult = StreamedReading & {
@@ -125,6 +129,10 @@ export async function streamDeepSeekReading({
   let upstreamRequestId: string | null = null;
   let finishReason: string | null = null;
   let receivedDone = false;
+  let promptTokens = 0;
+  let promptCacheHitTokens = 0;
+  let promptCacheMissTokens = 0;
+  let completionTokens = 0;
 
   const getDiagnostics = (): DeepSeekStreamDiagnostics => ({
     upstreamStatus,
@@ -135,6 +143,10 @@ export async function streamDeepSeekReading({
     finishReason,
     receivedDone,
     durationMs: Date.now() - startedAt,
+    promptTokens,
+    promptCacheHitTokens,
+    promptCacheMissTokens,
+    completionTokens,
   });
 
   const emitNewText = () => {
@@ -167,6 +179,7 @@ export async function streamDeepSeekReading({
         max_tokens: 4_096,
         response_format: { type: 'json_object' },
         stream: true,
+        stream_options: { include_usage: true },
       }),
       signal: controller.signal,
     });
@@ -199,15 +212,30 @@ export async function streamDeepSeekReading({
       } catch {
         throw new DeepSeekStreamError('invalid_response', undefined, getDiagnostics());
       }
-      const content = (event as {
+      const parsedEvent = event as {
         choices?: Array<{
           delta?: { content?: string | null };
           finish_reason?: string | null;
         }>;
-      }).choices?.[0]?.delta?.content;
-      const eventFinishReason = (event as {
-        choices?: Array<{ finish_reason?: string | null }>;
-      }).choices?.[0]?.finish_reason;
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          prompt_cache_hit_tokens?: number;
+          prompt_cache_miss_tokens?: number;
+          prompt_tokens_details?: { cached_tokens?: number };
+        } | null;
+      };
+      const content = parsedEvent.choices?.[0]?.delta?.content;
+      const eventFinishReason = parsedEvent.choices?.[0]?.finish_reason;
+      if (parsedEvent.usage) {
+        promptTokens = parsedEvent.usage.prompt_tokens ?? promptTokens;
+        completionTokens = parsedEvent.usage.completion_tokens ?? completionTokens;
+        promptCacheHitTokens = parsedEvent.usage.prompt_cache_hit_tokens
+          ?? parsedEvent.usage.prompt_tokens_details?.cached_tokens
+          ?? promptCacheHitTokens;
+        promptCacheMissTokens = parsedEvent.usage.prompt_cache_miss_tokens
+          ?? Math.max(promptTokens - promptCacheHitTokens, 0);
+      }
       if (typeof eventFinishReason === 'string') finishReason = eventFinishReason;
       if (typeof content === 'string' && content) {
         accumulated += content;

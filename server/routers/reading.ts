@@ -14,12 +14,29 @@ import {
   type ReadingSection,
   type StreamedReading,
 } from '../readingStream';
+import {
+  createAiRequestLog,
+  estimateDeepSeekCostMicros,
+  getAiBudgetConfig,
+  hashClientIp,
+  notifyBudgetLimitOnce,
+  reserveAiBudget,
+  settleAiBudget,
+  updateAiRequestLog,
+  verifyTurnstileToken,
+} from '../aiProtection';
 
 const DAILY_LIMIT = 10;
+const FREE_WITHOUT_TURNSTILE = 5;
 const DEFAULT_DEEPSEEK_TIMEOUT_MS = 60_000;
 
 function getTodayDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 function createReadingRequestId(): string {
@@ -60,6 +77,7 @@ class DeepSeekRequestError extends Error {
 async function checkAndIncrementIpLimit(
   ip: string,
   date = getTodayDate(),
+  limit = DAILY_LIMIT,
 ): Promise<{ allowed: boolean; remaining: number }> {
   const db = await getDb();
   if (!db) {
@@ -74,8 +92,8 @@ async function checkAndIncrementIpLimit(
       INSERT INTO ${ipRateLimits} (${ipRateLimits.ip}, ${ipRateLimits.date}, ${ipRateLimits.count})
       VALUES (${ip}, ${date}, 1)
       ON DUPLICATE KEY UPDATE
-        ${ipRateLimits.count} = IF(${ipRateLimits.count} < ${DAILY_LIMIT}, ${ipRateLimits.count} + 1, ${ipRateLimits.count}),
-        ${ipRateLimits.updatedAt} = IF(${ipRateLimits.count} < ${DAILY_LIMIT}, CURRENT_TIMESTAMP, ${ipRateLimits.updatedAt})
+        ${ipRateLimits.count} = IF(${ipRateLimits.count} < ${limit}, ${ipRateLimits.count} + 1, ${ipRateLimits.count}),
+        ${ipRateLimits.updatedAt} = IF(${ipRateLimits.count} < ${limit}, CURRENT_TIMESTAMP, ${ipRateLimits.updatedAt})
     `);
 
     const header = (Array.isArray(result) ? result[0] : result) as unknown as { affectedRows?: number };
@@ -84,7 +102,7 @@ async function checkAndIncrementIpLimit(
     return {
       allowed,
       // 并发请求可能在返回前继续递增，此值只作为提示，不参与授权判断。
-      remaining: allowed ? 0 : 0,
+      remaining: 0,
     };
   } catch (error) {
     if (error instanceof TRPCError) throw error;
@@ -209,6 +227,10 @@ const GenerateInputSchema = z.object({
   xiangYue: z.string().trim().max(2_000),
   yaoCi: z.array(YaoCiSchema).max(6),
   linesJson: z.string().max(128),
+});
+
+const ReadingStreamInputSchema = GenerateInputSchema.extend({
+  turnstileToken: z.string().max(2_048).optional(),
 });
 
 const LINE_POSITION_LABELS = ['初', '二', '三', '四', '五', '上'];
@@ -359,38 +381,102 @@ async function writeDevelopmentMockStream(res: Response) {
 export async function handleReadingStream(req: Request, res: Response, ctx: TrpcContext) {
   const requestId = createReadingRequestId();
   res.setHeader('X-Request-ID', requestId);
-  const parsedInput = GenerateInputSchema.safeParse(req.body);
+  const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
+  const rateLimitDate = getTodayDate();
+  await createAiRequestLog({ requestId, date: rateLimitDate, ipHash: hashClientIp(clientIp) }).catch(error => {
+    logReadingEvent('error', 'request_log_create_failed', {
+      requestId,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+  });
+
+  const parsedInput = ReadingStreamInputSchema.safeParse(req.body);
   if (!parsedInput.success) {
     logReadingEvent('error', 'invalid_input', { requestId });
+    await updateAiRequestLog(requestId, { status: 'rejected', httpStatus: 400, failureKind: 'invalid_input' });
     return res.status(400).json({ error: '占卜参数格式无效，请重新起卦。', requestId });
   }
+  const { turnstileToken, ...readingInput } = parsedInput.data;
   if (process.env.NODE_ENV === 'development' && process.env.MOCK_READING_STREAM === 'true') {
     await writeDevelopmentMockStream(res);
     return;
   }
   if (!ENV.deepseekApiKey) {
     logReadingEvent('error', 'missing_api_key', { requestId });
+    await updateAiRequestLog(requestId, { status: 'rejected', httpStatus: 412, failureKind: 'missing_api_key' });
     return res.status(412).json({ error: '解读服务尚未配置，请稍后再试。', requestId });
   }
 
-  const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
-  const rateLimitDate = getTodayDate();
   let rateLimitConsumed = false;
+  let turnstileRequired = false;
+  let turnstileVerified = false;
   let rateCheck: { allowed: boolean; remaining: number };
   try {
-    rateCheck = await checkAndIncrementIpLimit(clientIp, rateLimitDate);
+    rateCheck = await checkAndIncrementIpLimit(clientIp, rateLimitDate, FREE_WITHOUT_TURNSTILE);
     if (!rateCheck.allowed) {
-      throw new TRPCError({
-        code: 'TOO_MANY_REQUESTS',
-        message: `今日占卜次数已达上限（每天最多 ${DAILY_LIMIT} 次），明日再来。`,
+      turnstileRequired = true;
+      if (!turnstileToken) {
+        await updateAiRequestLog(requestId, {
+          status: 'challenge_required',
+          httpStatus: 403,
+          turnstileRequired: 1,
+          failureKind: 'turnstile_required',
+        });
+        return res.status(403).json({
+          error: '今日已完成 5 次解读，请先完成人机验证后继续。',
+          code: 'TURNSTILE_REQUIRED',
+          siteKey: ENV.turnstileSiteKey,
+          requestId,
+        });
+      }
+
+      const verification = await verifyTurnstileToken({
+        token: turnstileToken,
+        remoteIp: clientIp,
+        expectedHostname: req.hostname,
       });
+      if (!verification.success) {
+        logReadingEvent('error', 'turnstile_failed', { requestId, errorCodes: verification.errorCodes });
+        await updateAiRequestLog(requestId, {
+          status: 'challenge_failed',
+          httpStatus: 403,
+          turnstileRequired: 1,
+          failureKind: 'turnstile_failed',
+        });
+        return res.status(403).json({
+          error: '人机验证未通过或已过期，请重新验证。',
+          code: 'TURNSTILE_FAILED',
+          siteKey: ENV.turnstileSiteKey,
+          requestId,
+        });
+      }
+      turnstileVerified = true;
+      rateCheck = await checkAndIncrementIpLimit(clientIp, rateLimitDate, DAILY_LIMIT);
+      if (!rateCheck.allowed) {
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: `今日解读次数已达上限（每天最多 ${DAILY_LIMIT} 次），请明天再来使用吧～`,
+        });
+      }
     }
     rateLimitConsumed = true;
+    await updateAiRequestLog(requestId, {
+      status: 'accepted',
+      turnstileRequired: turnstileRequired ? 1 : 0,
+      turnstileVerified: turnstileVerified ? 1 : 0,
+    });
   } catch (error) {
     const publicError = error instanceof TRPCError ? error : getDeepSeekError(error);
     logReadingEvent('error', 'rate_limit_rejected', {
       requestId,
       code: publicError.code,
+    });
+    await updateAiRequestLog(requestId, {
+      status: 'rejected',
+      httpStatus: getHttpStatus(publicError),
+      turnstileRequired: turnstileRequired ? 1 : 0,
+      turnstileVerified: turnstileVerified ? 1 : 0,
+      failureKind: publicError.code,
     });
     return res.status(getHttpStatus(publicError)).json({ error: publicError.message, requestId });
   }
@@ -404,11 +490,26 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
   res.once('close', abortOnDisconnect);
 
   const attemptPartials: Array<Record<ReadingSection, string>> = [];
+  let totalEstimatedCostMicros = 0;
+  let totalPromptCacheHitTokens = 0;
+  let totalPromptCacheMissTokens = 0;
+  let totalCompletionTokens = 0;
+  let attemptCount = 0;
+  let latestUpstreamRequestId: string | null = null;
   try {
     let generated: Awaited<ReturnType<typeof streamDeepSeekReading>> | null = null;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const budgetReserved = await reserveAiBudget(rateLimitDate, attempt === 1);
+      if (!budgetReserved) {
+        await notifyBudgetLimitOnce(rateLimitDate);
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: '今日网站整体 AI 使用额度已达上限，请明天再来使用吧～',
+        });
+      }
+      attemptCount = attempt;
       const partial: Record<ReadingSection, string> = { integrated: '', hexagram: '' };
       attemptPartials.push(partial);
       if (attempt > 1) {
@@ -425,7 +526,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
               role: 'system',
               content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
             },
-            { role: 'user', content: buildPrompt(parsedInput.data) },
+            { role: 'user', content: buildPrompt(readingInput) },
           ],
           timeoutMs: getDeepSeekTimeoutMs(),
           signal: disconnectController.signal,
@@ -434,6 +535,13 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
             writeSseEvent(res, 'delta', { section, text });
           },
         });
+        const estimatedCostMicros = estimateDeepSeekCostMicros(generated.diagnostics);
+        await settleAiBudget(rateLimitDate, estimatedCostMicros);
+        totalEstimatedCostMicros += estimatedCostMicros;
+        totalPromptCacheHitTokens += generated.diagnostics.promptCacheHitTokens;
+        totalPromptCacheMissTokens += generated.diagnostics.promptCacheMissTokens;
+        totalCompletionTokens += generated.diagnostics.completionTokens;
+        latestUpstreamRequestId = generated.diagnostics.upstreamRequestId;
         logReadingEvent('info', 'upstream_complete', {
           requestId,
           attempt,
@@ -444,6 +552,28 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       } catch (error) {
         lastError = error;
         const streamError = error instanceof DeepSeekStreamError ? error : null;
+        const diagnostics = streamError?.diagnostics;
+        const hasReportedUsage = Boolean(
+          diagnostics
+          && (diagnostics.promptCacheHitTokens > 0
+            || diagnostics.promptCacheMissTokens > 0
+            || diagnostics.completionTokens > 0),
+        );
+        const failedAttemptCost = hasReportedUsage && diagnostics
+          ? estimateDeepSeekCostMicros(diagnostics)
+          : getAiBudgetConfig().reservationMicros;
+        await settleAiBudget(rateLimitDate, failedAttemptCost).catch(settleError => {
+          logReadingEvent('error', 'budget_settlement_failed', {
+            requestId,
+            attempt,
+            message: settleError instanceof Error ? settleError.message : 'unknown',
+          });
+        });
+        totalEstimatedCostMicros += failedAttemptCost;
+        totalPromptCacheHitTokens += diagnostics?.promptCacheHitTokens ?? 0;
+        totalPromptCacheMissTokens += diagnostics?.promptCacheMissTokens ?? 0;
+        totalCompletionTokens += diagnostics?.completionTokens ?? 0;
+        latestUpstreamRequestId = diagnostics?.upstreamRequestId ?? latestUpstreamRequestId;
         const cause = streamError?.cause;
         const causeCode = typeof cause === 'object' && cause !== null && 'code' in cause
           ? String((cause as { code?: unknown }).code ?? '') || null
@@ -463,7 +593,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
 
     const validated = DeepSeekReadingSchema.safeParse(generated);
     if (!validated.success) throw new DeepSeekStreamError('invalid_response');
-    const readingId = await saveAuthenticatedReading(parsedInput.data, ctx, validated.data);
+    const readingId = await saveAuthenticatedReading(readingInput, ctx, validated.data);
     writeSseEvent(res, 'complete', {
       integratedReading: validated.data.integrated_reading,
       hexagramReading: validated.data.hexagram_reading,
@@ -471,7 +601,21 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       remaining: rateCheck.remaining,
       requestId,
     });
-    logReadingEvent('info', 'request_complete', { requestId });
+    await updateAiRequestLog(requestId, {
+      status: 'complete',
+      httpStatus: 200,
+      attemptCount,
+      promptCacheHitTokens: totalPromptCacheHitTokens,
+      promptCacheMissTokens: totalPromptCacheMissTokens,
+      completionTokens: totalCompletionTokens,
+      estimatedCostMicros: totalEstimatedCostMicros,
+      upstreamRequestId: latestUpstreamRequestId,
+    });
+    logReadingEvent('info', 'request_complete', {
+      requestId,
+      attemptCount,
+      estimatedCostMicros: totalEstimatedCostMicros,
+    });
   } catch (error) {
     if (rateLimitConsumed) {
       const refunded = await refundIpLimit(clientIp, rateLimitDate);
@@ -506,6 +650,17 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
         code: publicError.code,
         partialAvailable,
       });
+      await updateAiRequestLog(requestId, {
+        status: publicError.code === 'TOO_MANY_REQUESTS' ? 'budget_rejected' : 'failed',
+        httpStatus: getHttpStatus(publicError),
+        attemptCount,
+        promptCacheHitTokens: totalPromptCacheHitTokens,
+        promptCacheMissTokens: totalPromptCacheMissTokens,
+        completionTokens: totalCompletionTokens,
+        estimatedCostMicros: totalEstimatedCostMicros,
+        upstreamRequestId: latestUpstreamRequestId,
+        failureKind: publicError.code,
+      });
     }
   } finally {
     res.off('close', abortOnDisconnect);
@@ -516,45 +671,12 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
 export const readingRouter = router({
   generate: publicProcedure
     .input(GenerateInputSchema)
-    .mutation(async ({ input, ctx }) => {
-      // 未配置服务时不消耗 IP 当日额度。
-      if (!ENV.deepseekApiKey) {
-        throw new TRPCError({
-          code: 'PRECONDITION_FAILED',
-          message: '解读服务尚未配置，请稍后再试。',
-        });
-      }
-
-      const clientIp = ctx.req.ip || ctx.req.socket?.remoteAddress || 'unknown';
-      const rateCheck = await checkAndIncrementIpLimit(clientIp);
-      if (!rateCheck.allowed) {
-        throw new TRPCError({
-          code: 'TOO_MANY_REQUESTS',
-          message: `今日占卜次数已达上限（每天最多 ${DAILY_LIMIT} 次），明日再来。`,
-        });
-      }
-
-      let generated;
-      try {
-        generated = await callDeepSeek([
-          {
-            role: 'system',
-            content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
-          },
-          { role: 'user', content: buildPrompt(input) },
-        ]);
-      } catch (error) {
-        throw getDeepSeekError(error);
-      }
-
-      const readingId = await saveAuthenticatedReading(input, ctx, generated);
-
-      return {
-        integratedReading: generated.integrated_reading,
-        hexagramReading: generated.hexagram_reading,
-        readingId,
-        remaining: rateCheck.remaining,
-      };
+    .mutation(async () => {
+      // 旧整包接口没有 Turnstile 与预算预留能力，关闭以避免成为绕过入口。
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: '此解读入口已停用，请刷新页面后重试。',
+      });
     }),
 
   // 作为未来 OAuth 版本的可选接口保留；匿名版本的前端不会调用它。

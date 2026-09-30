@@ -10,5 +10,13 @@ export const ENV = {
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
   deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
   deepseekTimeoutMs: process.env.DEEPSEEK_TIMEOUT_MS ?? "60000",
+  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY ?? "",
+  turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY ?? "",
+  aiDailyBudgetCny: process.env.AI_DAILY_BUDGET_CNY ?? "30",
+  aiRequestReservationCny: process.env.AI_REQUEST_RESERVATION_CNY ?? "0.10",
+  deepseekCacheHitCnyPerMillion: process.env.DEEPSEEK_CACHE_HIT_CNY_PER_MILLION ?? "0.05",
+  deepseekCacheMissCnyPerMillion: process.env.DEEPSEEK_CACHE_MISS_CNY_PER_MILLION ?? "2.20",
+  deepseekOutputCnyPerMillion: process.env.DEEPSEEK_OUTPUT_CNY_PER_MILLION ?? "8.80",
+  logHashSalt: process.env.LOG_HASH_SALT ?? "",
   trustProxy: process.env.TRUST_PROXY === "true",
 };

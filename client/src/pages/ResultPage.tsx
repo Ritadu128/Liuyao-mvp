@@ -4,7 +4,7 @@ import { useDivination } from '@/contexts/DivinationContext';
 import { useHexagramLookup } from '@/hooks/useHexagramData';
 import { HexagramDisplay } from '@/components/HexagramLine';
 import { cn } from '@/lib/utils';
-import { streamReading } from '@/lib/readingStream';
+import { ReadingStreamError, streamReading } from '@/lib/readingStream';
 import { SafeMarkdown } from '@/components/SafeMarkdown';
 import {
   FANG_SONG, SONG,
@@ -14,6 +14,7 @@ import {
 import { addLocalReading } from '@/hooks/useLocalHistory';
 import { ReadingExportActions } from '@/components/ReadingExport';
 import { SupportAuthor } from '@/components/SupportAuthor';
+import { TurnstileChallenge } from '@/components/TurnstileChallenge';
 
 type TabType = 'integrated' | 'hexagram';
 
@@ -24,6 +25,9 @@ export default function ResultPage() {
   const [activeTab, setActiveTab] = useState<TabType>('integrated');
   const [revealed, setRevealed] = useState(false);
   const [streamError, setStreamError] = useState<string | undefined>();
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | undefined>();
+  const [turnstileError, setTurnstileError] = useState<string | undefined>();
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const exportTargetRef = useRef<HTMLDivElement>(null);
   const requestStartedRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -59,6 +63,7 @@ export default function ResultPage() {
       requestStartedRef.current = true;
       setIsLoadingReading(true);
       setStreamError(undefined);
+      setTurnstileError(undefined);
       integratedBufferRef.current = '';
       hexagramBufferRef.current = '';
       const controller = new AbortController();
@@ -80,6 +85,7 @@ export default function ResultPage() {
           text: originalText.yao_ci[String(pos)] ?? ''
         })),
         linesJson: JSON.stringify(hexResult.lines),
+        turnstileToken,
       }, {
         signal: controller.signal,
         onDelta: (section, text) => {
@@ -98,6 +104,8 @@ export default function ResultPage() {
           setHexagramReading('');
         },
       }).then(data => {
+        setTurnstileSiteKey(undefined);
+        setTurnstileToken(undefined);
         setIntegratedReading(data.integratedReading);
         setHexagramReading(data.hexagramReading);
         if (data.readingId) setSavedReadingId(data.readingId);
@@ -118,6 +126,14 @@ export default function ResultPage() {
         });
       }).catch(error => {
         if (controller.signal.aborted) return;
+        if (error instanceof ReadingStreamError
+          && (error.code === 'TURNSTILE_REQUIRED' || error.code === 'TURNSTILE_FAILED')) {
+          requestStartedRef.current = false;
+          setTurnstileSiteKey(error.siteKey);
+          setTurnstileToken(undefined);
+          setTurnstileError(error.code === 'TURNSTILE_FAILED' ? error.message : undefined);
+          return;
+        }
         const message = error instanceof Error ? error.message : '解读生成失败，请稍后重试。';
         setStreamError(message);
         console.error('[Reading] stream error:', message);
@@ -126,7 +142,7 @@ export default function ResultPage() {
         if (streamAbortRef.current === controller) streamAbortRef.current = null;
       });
     }
-  }, [hexLoading, originalHexagram, originalText, changedHexagram, hexResult]);
+  }, [hexLoading, originalHexagram, originalText, changedHexagram, hexResult, turnstileToken]);
 
   useEffect(() => () => {
     streamAbortRef.current?.abort();
@@ -319,6 +335,17 @@ export default function ResultPage() {
               )}
             </div>
           </ScrollCard>
+
+          {turnstileSiteKey && !turnstileToken && (
+            <TurnstileChallenge
+              siteKey={turnstileSiteKey}
+              error={turnstileError}
+              onVerified={token => {
+                setTurnstileError(undefined);
+                setTurnstileToken(token);
+              }}
+            />
+          )}
 
           {/* Tab 内容 */}
           {activeTab === 'integrated' && (

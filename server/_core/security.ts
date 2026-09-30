@@ -7,12 +7,13 @@ function createContentSecurityPolicy(isDevelopment = false) {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    `script-src 'self' 'wasm-unsafe-eval'${isDevelopment ? " 'unsafe-inline'" : ''}`,
+    `script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com${isDevelopment ? " 'unsafe-inline'" : ''}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
     "media-src 'self' blob:",
-    `connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com${isDevelopment ? ' ws:' : ''}`,
+    `connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://challenges.cloudflare.com${isDevelopment ? ' ws:' : ''}`,
+    "frame-src 'self' https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
   ].join('; ');
 }
@@ -84,6 +85,32 @@ export function enforceSameOriginApiMutations(req: Request, res: Response, next:
   const contentType = req.get('content-type') ?? '';
   if (!contentType.toLowerCase().includes('application/json')) {
     return res.status(415).json({ error: '写请求必须使用 application/json' });
+  }
+
+  next();
+}
+
+/**
+ * AI 解读只允许从本站浏览器页面发起。Origin 不是完整的机器人防线，但能挡住
+ * 大量直接 curl/脚本调用；真正的高频验证由 Turnstile 与数据库限额完成。
+ */
+export function enforceReadingRequestOrigin(req: Request, res: Response, next: NextFunction) {
+  const origin = req.get('origin');
+  if (!origin) {
+    return res.status(403).json({ error: '请从众见六爻网页发起解读。' });
+  }
+
+  try {
+    if (new URL(origin).host !== req.get('host')) {
+      return res.status(403).json({ error: '跨域解读请求不被允许。' });
+    }
+  } catch {
+    return res.status(403).json({ error: '无效的请求来源。' });
+  }
+
+  const fetchSite = req.get('sec-fetch-site');
+  if (fetchSite && fetchSite !== 'same-origin') {
+    return res.status(403).json({ error: '解读请求来源校验失败。' });
   }
 
   next();

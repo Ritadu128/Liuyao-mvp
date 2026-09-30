@@ -11,6 +11,7 @@ export type ReadingStreamInput = {
   xiangYue: string;
   yaoCi: Array<{ position: number; text: string }>;
   linesJson: string;
+  turnstileToken?: string;
 };
 
 export type ReadingStreamResult = {
@@ -31,6 +32,8 @@ export class ReadingStreamError extends Error {
     message: string,
     public readonly requestId?: string,
     public readonly partialAvailable = false,
+    public readonly code?: string,
+    public readonly siteKey?: string,
   ) {
     super(requestId ? `${message}（错误编号：${requestId}）` : message);
   }
@@ -64,10 +67,15 @@ export async function streamReading(
     const body = await response.json().catch(() => null) as {
       error?: string;
       requestId?: string;
+      code?: string;
+      siteKey?: string;
     } | null;
     throw new ReadingStreamError(
       body?.error ?? '解读生成失败，请稍后重试。',
       body?.requestId ?? response.headers.get('x-request-id') ?? undefined,
+      false,
+      body?.code,
+      body?.siteKey,
     );
   }
   if (!response.body) throw new Error('当前浏览器不支持流式解读。');
@@ -113,6 +121,8 @@ export async function streamReading(
         typeof parsed.message === 'string' ? parsed.message : '解读生成失败，请稍后重试。',
         typeof parsed.requestId === 'string' ? parsed.requestId : undefined,
         parsed.partialAvailable === true,
+        typeof parsed.code === 'string' ? parsed.code : undefined,
+        typeof parsed.siteKey === 'string' ? parsed.siteKey : undefined,
       );
     }
   };

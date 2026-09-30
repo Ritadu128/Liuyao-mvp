@@ -65,3 +65,41 @@ export const ipRateLimits = mysqlTable("ipRateLimits", {
 ]);
 
 export type IpRateLimit = typeof ipRateLimits.$inferSelect;
+
+// AI 每日预算：金额以“微元”（1 元 = 1,000,000）记录，避免浮点误差。
+export const aiDailyBudgets = mysqlTable("aiDailyBudgets", {
+  id: int("id").autoincrement().primaryKey(),
+  date: varchar("date", { length: 10 }).notNull(),
+  spentMicros: int("spentMicros").notNull().default(0),
+  reservedMicros: int("reservedMicros").notNull().default(0),
+  requestCount: int("requestCount").notNull().default(0),
+  upstreamCallCount: int("upstreamCallCount").notNull().default(0),
+  alertSentAt: timestamp("alertSentAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, table => [
+  uniqueIndex("ai_daily_budgets_date_unique").on(table.date),
+]);
+
+export type AiDailyBudget = typeof aiDailyBudgets.$inferSelect;
+
+// AI 请求审计日志：不保存原始 IP、问题或解读正文，便于凭请求编号排错和核算费用。
+export const aiRequestLogs = mysqlTable("aiRequestLogs", {
+  requestId: varchar("requestId", { length: 32 }).primaryKey(),
+  date: varchar("date", { length: 10 }).notNull(),
+  ipHash: varchar("ipHash", { length: 32 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  httpStatus: int("httpStatus"),
+  turnstileRequired: int("turnstileRequired").notNull().default(0),
+  turnstileVerified: int("turnstileVerified").notNull().default(0),
+  attemptCount: int("attemptCount").notNull().default(0),
+  promptCacheHitTokens: int("promptCacheHitTokens").notNull().default(0),
+  promptCacheMissTokens: int("promptCacheMissTokens").notNull().default(0),
+  completionTokens: int("completionTokens").notNull().default(0),
+  estimatedCostMicros: int("estimatedCostMicros").notNull().default(0),
+  upstreamRequestId: varchar("upstreamRequestId", { length: 128 }),
+  failureKind: varchar("failureKind", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AiRequestLog = typeof aiRequestLogs.$inferSelect;

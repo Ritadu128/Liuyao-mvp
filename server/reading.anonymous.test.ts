@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { TrpcContext } from './_core/context';
-import { ENV } from './_core/env';
 import { appRouter } from './routers';
 
 const readingInput = {
@@ -31,19 +30,12 @@ function createAnonymousContext(): TrpcContext {
 }
 
 describe('匿名解读接口', () => {
-  it('未配置 DeepSeek Key 时返回受控错误，且不会尝试调用外部服务', async () => {
-    const originalApiKey = ENV.deepseekApiKey;
-    ENV.deepseekApiKey = '';
-
-    try {
-      const caller = appRouter.createCaller(createAnonymousContext());
-      await expect(caller.reading.generate(readingInput)).rejects.toMatchObject({
-        code: 'PRECONDITION_FAILED',
-        message: '解读服务尚未配置，请稍后再试。',
-      });
-    } finally {
-      ENV.deepseekApiKey = originalApiKey;
-    }
+  it('关闭缺少 Turnstile 与预算保护的旧整包解读入口', async () => {
+    const caller = appRouter.createCaller(createAnonymousContext());
+    await expect(caller.reading.generate(readingInput)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: '此解读入口已停用，请刷新页面后重试。',
+    });
   });
 
   it('在调用模型前拒绝无效卦象格式和重复动爻', async () => {

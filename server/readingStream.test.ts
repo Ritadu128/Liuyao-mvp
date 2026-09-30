@@ -38,7 +38,15 @@ describe('DeepSeek 流式诊断信息', () => {
     });
     const body = [
       `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] })}\n\n`,
-      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ delta: {}, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 120,
+          completion_tokens: 80,
+          prompt_cache_hit_tokens: 20,
+          prompt_cache_miss_tokens: 100,
+        },
+      })}\n\n`,
       'data: [DONE]\n\n',
     ].join('');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
@@ -67,6 +75,10 @@ describe('DeepSeek 流式诊断信息', () => {
       hexagramLength: 4,
       finishReason: 'stop',
       receivedDone: true,
+      promptTokens: 120,
+      promptCacheHitTokens: 20,
+      promptCacheMissTokens: 100,
+      completionTokens: 80,
     });
   });
 
