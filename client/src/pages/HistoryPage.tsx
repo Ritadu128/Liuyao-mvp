@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import { getLocalReadings, type LocalReading } from '@/hooks/useLocalHistory';
 import { rebuildHexagram } from '@/lib/liuyao';
@@ -6,10 +6,15 @@ import type { LineValue } from '@/lib/liuyao';
 import { HexagramDisplay } from '@/components/HexagramLine';
 import { cn } from '@/lib/utils';
 import { SafeMarkdown } from '@/components/SafeMarkdown';
+import { lookupHexagram } from '@/hooks/useHexagramData';
 
 export default function HistoryPage() {
   const [, navigate] = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [verifiedNames, setVerifiedNames] = useState<Record<string, {
+    original: string;
+    changed: string | null;
+  }>>({});
 
   // 匿名版本只读取当前浏览器的 localStorage；刷新或重新打开页面后仍可恢复。
   const readings = useMemo<LocalReading[]>(() => getLocalReadings(), []);
@@ -18,6 +23,30 @@ export default function HistoryPage() {
     if (!selectedId) return null;
     return readings.find(reading => reading.id === selectedId) ?? null;
   }, [readings, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(readings.map(async item => {
+      const hexResult = getHexagram(item.linesJson);
+      if (!hexResult) return [item.id, null] as const;
+      const original = await lookupHexagram(hexResult.originalBits);
+      const changed = hexResult.hasMoving
+        ? await lookupHexagram(hexResult.changedBits)
+        : null;
+      return [item.id, {
+        original: original?.name ?? '卦象记录',
+        changed: changed?.name ?? null,
+      }] as const;
+    })).then(entries => {
+      if (cancelled) return;
+      const next: Record<string, { original: string; changed: string | null }> = {};
+      for (const [id, names] of entries) {
+        if (names) next[id] = names;
+      }
+      setVerifiedNames(next);
+    });
+    return () => { cancelled = true; };
+  }, [readings]);
 
   const formatDate = (value: string) => {
     const date = new Date(value);
@@ -66,6 +95,8 @@ export default function HistoryPage() {
           {readings.map(item => {
             const hexResult = getHexagram(item.linesJson);
             const isSelected = selectedId === item.id;
+            const verified = verifiedNames[item.id];
+            const isLegacyCasting = item.castingVersion !== 2;
 
             return (
               <div
@@ -95,13 +126,13 @@ export default function HistoryPage() {
                     <p className="text-stone-700 text-sm font-medium truncate mb-1">{item.question}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                        {item.originalName}
+                        {verified?.original ?? (isLegacyCasting ? '历史排盘待校验' : item.originalName)}
                       </span>
-                      {item.changedName && (
+                      {(verified?.changed ?? (!isLegacyCasting ? item.changedName : null)) && (
                         <>
                           <span className="text-xs text-stone-400">→</span>
                           <span className="text-xs text-stone-600 bg-stone-50 px-2 py-0.5 rounded-full border border-stone-200">
-                            {item.changedName}
+                            {verified?.changed ?? item.changedName}
                           </span>
                         </>
                       )}
@@ -124,7 +155,12 @@ export default function HistoryPage() {
 
                 {isSelected && selectedItem?.id === item.id && (
                   <div className="border-t border-amber-100 px-4 py-4 space-y-4 bg-amber-50/30">
-                    {selectedItem.integratedReading && (
+                    {isLegacyCasting && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-relaxed text-amber-900">
+                        此记录生成于排盘顺序修复前。上方卦名已按六次投掷重新核对，但旧 AI 解读可能引用了错误卦名，因此不再展示；建议使用相同问题重新起卦。
+                      </div>
+                    )}
+                    {!isLegacyCasting && selectedItem.integratedReading && (
                       <div>
                         <h4 className="text-xs font-medium text-amber-700 mb-2">综合解读</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
@@ -132,7 +168,7 @@ export default function HistoryPage() {
                         </div>
                       </div>
                     )}
-                    {selectedItem.hexagramReading && (
+                    {!isLegacyCasting && selectedItem.hexagramReading && (
                       <div>
                         <h4 className="text-xs font-medium text-amber-700 mb-2">卦象解读</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">

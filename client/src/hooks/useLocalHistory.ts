@@ -22,6 +22,7 @@ export interface LocalReading {
   hexagramReading: string | null;
   createdAt: string;    // ISO 字符串
   isLocal: true;        // 标记为本地记录
+  castingVersion?: 2;   // v2 起统一按“初爻→上爻、下卦在前”排盘
 }
 
 function loadAll(): LocalReading[] {
@@ -50,6 +51,7 @@ export function addLocalReading(record: Omit<LocalReading, 'id' | 'createdAt' | 
     id: Date.now().toString(),
     createdAt: new Date().toISOString(),
     isLocal: true,
+    castingVersion: 2,
   };
   const updated = [newRecord, ...all].slice(0, MAX_LOCAL_RECORDS);
   saveAll(updated);

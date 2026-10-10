@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { desc, eq, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
+import {
+  deriveHexagramFromLines,
+  HEXAGRAM_IDENTITY_BY_BITS,
+} from '../../shared/hexagram';
 import { publicProcedure, router } from '../_core/trpc';
 import type { TrpcContext } from '../_core/context';
 import { ENV } from '../_core/env';
@@ -233,9 +237,59 @@ const ReadingStreamInputSchema = GenerateInputSchema.extend({
   turnstileToken: z.string().max(2_048).optional(),
 });
 
+type GenerateInput = z.infer<typeof GenerateInputSchema>;
+/**
+ * 客户端只负责展示，服务端在消耗 AI 额度前重新根据六次投掷校验排盘。
+ * 这样即使旧缓存或被篡改的请求把上下卦、动爻或变卦传错，也不会生成错误解读。
+ */
+export function getCastingValidationError(input: GenerateInput): string | null {
+  let parsedLines: unknown;
+  try {
+    parsedLines = JSON.parse(input.linesJson);
+  } catch {
+    return '六爻记录不是有效 JSON';
+  }
+  if (!Array.isArray(parsedLines)) return '六爻记录必须是数组';
+
+  const derived = deriveHexagramFromLines(parsedLines);
+  if (!derived) return '六爻记录必须按初爻到上爻包含六个 6、7、8、9';
+
+  if (input.originalBits !== derived.originalBits) return '本卦爻码与投掷记录不一致';
+  if (JSON.stringify(input.movingLines) !== JSON.stringify(derived.movingLines)) {
+    return '动爻位置与投掷记录不一致';
+  }
+
+  const original = HEXAGRAM_IDENTITY_BY_BITS[derived.originalBits];
+  if (!original) return '本卦爻码不在六十四卦表中';
+  if (input.originalKey !== original.key || input.originalName !== original.name) {
+    return '本卦名称或卦序与六爻不一致';
+  }
+
+  const hasChange = derived.changedBits !== derived.originalBits;
+  if (!hasChange) {
+    if (input.changedBits !== null || input.changedKey !== null || input.changedName !== null) {
+      return '无动爻时不应存在变卦';
+    }
+  } else {
+    const changed = HEXAGRAM_IDENTITY_BY_BITS[derived.changedBits];
+    if (!changed) return '变卦爻码不在六十四卦表中';
+    if (input.changedBits !== derived.changedBits
+      || input.changedKey !== changed.key
+      || input.changedName !== changed.name) {
+      return '变卦名称、卦序或爻码与动爻变化不一致';
+    }
+  }
+
+  const suppliedYaoPositions = input.yaoCi.map(item => item.position);
+  if (JSON.stringify(suppliedYaoPositions) !== JSON.stringify(derived.movingLines)) {
+    return '动爻爻辞位置与投掷记录不一致';
+  }
+  return null;
+}
+
 const LINE_POSITION_LABELS = ['初', '二', '三', '四', '五', '上'];
 
-function buildPrompt(input: z.infer<typeof GenerateInputSchema>): string {
+function buildPrompt(input: GenerateInput): string {
   const movingDesc = input.movingLines.length > 0
     ? `动爻：${input.movingLines.map(position => LINE_POSITION_LABELS[position - 1] + '爻').join('、')}`
     : '无动爻（纯卦）';
@@ -249,13 +303,15 @@ function buildPrompt(input: z.infer<typeof GenerateInputSchema>): string {
   const xiangYueBlock = input.xiangYue.trim() ? `象曰：${input.xiangYue}` : '象曰：（缺失）';
   const yaoCiBlock = input.yaoCi.length > 0 ? `动爻爻辞：\n${yaoCiText}` : '';
 
-  return `你是一位精通《周易》六爻占卜的易学大师，请为以下占卜结果提供专业解读。
+  return `你是一位熟悉《周易》经传的文化解读者，请为以下占卜结果提供审慎、可核对的解读。
 
 【占卜信息】
 问题：${input.question}
 本卦：${input.originalName}（第${input.originalKey}卦）
 ${changedDesc}
 ${movingDesc}
+排盘校验：已根据六次投掷从初爻到上爻校验通过；本卦爻码为 ${input.originalBits}${input.changedBits ? `，变卦爻码为 ${input.changedBits}` : ''}。
+排盘口径：三钱法，6=老阴、7=少阳、8=少阴、9=老阳；只翻转老阴、老阳得到变卦。
 
 【经文原文】（以下为本次占卜的唯一经文来源）
 ${guaCiBlock}
@@ -285,7 +341,10 @@ ${yaoCiBlock}
 1. 语言：文白相间，既有古典韵味又通俗易懂
 2. 态度：客观中立，不做绝对预测，引导积极思考
 3. 【重要】经文引用规则：只能引用【经文原文】区块中提供的原句，不得自行补充、杜撰或引用未出现在输入中的经文。若某字段标注“（缺失）”，则在对应位置直接留空，不得替换为其他经文
-4. 严格返回合法 JSON，不要有额外文字，JSON 值中的换行用 \\n 表示`;
+4. 本产品当前采用本卦、动爻、变卦和《周易》经文的简化解读，不包含起卦年月日、月建日辰、纳甲、世应、六亲、六神、旬空等信息；不得假装已完成这些传统六爻纳甲判断
+5. 不得凭空断言具体人物、公司内部事件、疾病结果、金额或发生日期；变卦只表变化方向与后续参考，不作必然结果
+6. 有动爻时以本卦卦义和已提供的动爻爻辞为重点，再将变卦作为变化背景；无动爻时以本卦整体卦义为重点
+7. 严格返回合法 JSON，不要有额外文字，JSON 值中的换行用 \\n 表示`;
 }
 
 function getDeepSeekError(error: unknown): TRPCError {
@@ -297,7 +356,7 @@ function getDeepSeekError(error: unknown): TRPCError {
 }
 
 async function saveAuthenticatedReading(
-  input: z.infer<typeof GenerateInputSchema>,
+  input: GenerateInput,
   ctx: TrpcContext,
   generated: StreamedReading,
 ): Promise<number | null> {
@@ -397,6 +456,19 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
     return res.status(400).json({ error: '占卜参数格式无效，请重新起卦。', requestId });
   }
   const { turnstileToken, ...readingInput } = parsedInput.data;
+  const castingError = getCastingValidationError(readingInput);
+  if (castingError) {
+    logReadingEvent('error', 'invalid_casting', { requestId, reason: castingError });
+    await updateAiRequestLog(requestId, {
+      status: 'rejected',
+      httpStatus: 400,
+      failureKind: 'invalid_casting',
+    });
+    return res.status(400).json({
+      error: '排盘校验失败，请刷新页面后重新起卦。',
+      requestId,
+    });
+  }
   if (process.env.NODE_ENV === 'development' && process.env.MOCK_READING_STREAM === 'true') {
     await writeDevelopmentMockStream(res);
     return;

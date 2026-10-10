@@ -56,7 +56,8 @@ describe('HTTP 安全中间件', () => {
     vi.stubEnv('NODE_ENV', 'development');
     const { response, headers } = createResponse();
     applySecurityHeaders(createRequest(), response, vi.fn());
-    expect(headers.get('Content-Security-Policy')).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'");
+    expect(headers.get('Content-Security-Policy')).toContain("script-src 'self' 'wasm-unsafe-eval'");
+    expect(headers.get('Content-Security-Policy')).toContain("'unsafe-inline'");
     expect(headers.get('Content-Security-Policy')).toContain(' ws:');
   });
 

@@ -67,6 +67,25 @@ describe('throwAllSix', () => {
 });
 
 describe('computeHexagram', () => {
+  it('stores bits from 初爻 to 上爻, with lower trigram before upper trigram', () => {
+    const values: LineValue[] = [7, 7, 9, 7, 8, 8];
+    const throws = values.map(sum => {
+      const isMoving = sum === 6 || sum === 9;
+      const isYang = sum === 7 || sum === 9;
+      return {
+        coins: [0, 0, 0] as [0|1,0|1,0|1],
+        sum,
+        isMoving,
+        isYang,
+        changedIsYang: isMoving ? !isYang : isYang,
+      };
+    });
+    const result = computeHexagram(throws);
+    expect(result.originalBits).toBe('111100');
+    expect(result.changedBits).toBe('110100');
+    expect(result.movingLines).toEqual([3]);
+  });
+
   it('should compute originalBits correctly (1=yang, 0=yin)', () => {
     // 6爻全阳（全部9=老阳）
     const allYang = throwAllSix().map(() => ({ coins: [1, 1, 1] as [0|1,0|1,0|1], sum: 9 as LineValue, isMoving: true, isYang: true, changedIsYang: false }));

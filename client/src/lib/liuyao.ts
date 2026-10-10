@@ -1,3 +1,5 @@
+import { deriveHexagramFromLines } from '@shared/hexagram';
+
 /**
  * 六爻占卜计算引擎 - 纯函数实现
  *
@@ -61,24 +63,15 @@ export function throwAllSix(): ThrowResult[] {
  */
 export function computeHexagram(throws: ThrowResult[]): HexagramResult {
   const lines = throws.map(t => t.sum) as LineValue[];
-
-  // 本卦二进制：1=阳，0=阴，从下到上（index 0 = 爻1）
-  const originalBits = throws.map(t => t.isYang ? '1' : '0').join('');
-
-  // 变卦二进制
-  const changedBits = throws.map(t => t.changedIsYang ? '1' : '0').join('');
-
-  // 动爻位置（1-based）
-  const movingLines = throws
-    .map((t, i) => t.isMoving ? i + 1 : null)
-    .filter((v): v is number => v !== null);
+  const derived = deriveHexagramFromLines(lines);
+  if (!derived) throw new Error('六爻数据必须恰好包含 6、7、8、9 中的六个值');
 
   return {
     lines,
-    originalBits,
-    changedBits,
-    movingLines,
-    hasMoving: movingLines.length > 0,
+    originalBits: derived.originalBits,
+    changedBits: derived.changedBits,
+    movingLines: derived.movingLines,
+    hasMoving: derived.movingLines.length > 0,
   };
 }
 
