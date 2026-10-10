@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { aiDailyBudgets, aiRequestLogs } from '../drizzle/schema';
 import { ENV } from './_core/env';
 import { notifyOwner } from './_core/notification';
@@ -83,28 +83,76 @@ export async function settleAiBudget(date: string, actualCostMicros: number): Pr
   `);
 }
 
+async function sendBudgetLimitEmail(date: string, budgetCny: number): Promise<boolean> {
+  if (!ENV.resendApiKey || !ENV.aiBudgetAlertEmail) return false;
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ENV.resendApiKey}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': `liuyao-budget-limit-${date}`,
+      },
+      body: JSON.stringify({
+        from: ENV.aiBudgetAlertFrom,
+        to: [ENV.aiBudgetAlertEmail],
+        subject: `众见六爻：${date} AI 预算已达到上限`,
+        text: [
+          `${date} 的 AI 调用预算已达到约 ${budgetCny} 元。`,
+          '系统已自动停止新的 AI 解读，用户会看到今日额度已用完的提示。',
+          '请检查 Railway 的 [Reading] 日志和 DeepSeek 用量。',
+        ].join('\n\n'),
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[Reading] budget_email_delivery_failed', response.status);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('[Reading] budget_email_unavailable:', error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
 export async function notifyBudgetLimitOnce(date: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
-  const result = await db.execute(sql`
+  const [budget] = await db
+    .select({ alertSentAt: aiDailyBudgets.alertSentAt })
+    .from(aiDailyBudgets)
+    .where(eq(aiDailyBudgets.date, date))
+    .limit(1);
+  if (!budget || budget.alertSentAt) return;
+
+  const budgetCny = parsePositiveNumber(ENV.aiDailyBudgetCny, 30);
+  let delivered = await sendBudgetLimitEmail(date, budgetCny);
+
+  if (!delivered && ENV.forgeApiUrl && ENV.forgeApiKey) {
+    try {
+      delivered = await notifyOwner({
+        title: '众见六爻：今日 AI 预算已达到上限',
+        content: `${date} 的 AI 调用预算已达到约 ${budgetCny} 元，系统已自动停止新的 AI 解读。请检查 Railway 的 [Reading] 日志和 DeepSeek 用量。`,
+      });
+    } catch (error) {
+      console.error('[Reading] budget_alert_unavailable:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  if (!delivered) {
+    console.error('[Reading] budget_alert_delivery_failed');
+    return;
+  }
+
+  await db.execute(sql`
     UPDATE ${aiDailyBudgets}
     SET ${aiDailyBudgets.alertSentAt} = CURRENT_TIMESTAMP,
         ${aiDailyBudgets.updatedAt} = CURRENT_TIMESTAMP
     WHERE ${aiDailyBudgets.date} = ${date}
       AND ${aiDailyBudgets.alertSentAt} IS NULL
   `);
-  if (affectedRows(result) === 0) return;
-
-  const budgetCny = parsePositiveNumber(ENV.aiDailyBudgetCny, 30);
-  try {
-    const sent = await notifyOwner({
-      title: '众见六爻：今日 AI 预算已达到上限',
-      content: `${date} 的 AI 调用预算已达到约 ${budgetCny} 元，系统已自动停止新的 AI 解读。请检查 Railway 的 [Reading] 日志和 DeepSeek 用量。`,
-    });
-    if (!sent) console.error('[Reading] budget_alert_delivery_failed');
-  } catch (error) {
-    console.error('[Reading] budget_alert_unavailable:', error instanceof Error ? error.message : error);
-  }
 }
 
 export function hashClientIp(ip: string): string {

@@ -18,5 +18,8 @@ export const ENV = {
   deepseekCacheMissCnyPerMillion: process.env.DEEPSEEK_CACHE_MISS_CNY_PER_MILLION ?? "2.20",
   deepseekOutputCnyPerMillion: process.env.DEEPSEEK_OUTPUT_CNY_PER_MILLION ?? "8.80",
   logHashSalt: process.env.LOG_HASH_SALT ?? "",
+  resendApiKey: process.env.RESEND_API_KEY ?? "",
+  aiBudgetAlertEmail: process.env.AI_BUDGET_ALERT_EMAIL ?? "",
+  aiBudgetAlertFrom: process.env.AI_BUDGET_ALERT_FROM ?? "众见六爻 <onboarding@resend.dev>",
   trustProxy: process.env.TRUST_PROXY === "true",
 };
