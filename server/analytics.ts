@@ -138,7 +138,7 @@ export function protectAnalyticsDashboard(req: Request, res: Response, next: Nex
       // 统一返回认证提示，不暴露解析细节。
     }
   }
-  res.setHeader('WWW-Authenticate', 'Basic realm="众见六爻数据看板", charset="UTF-8"');
+  res.setHeader('WWW-Authenticate', 'Basic realm="Liuyao Analytics", charset="UTF-8"');
   return res.status(401).send('需要数据看板密码。');
 }
 
