@@ -1,5 +1,5 @@
-import { createHmac } from 'node:crypto';
-import type { Request, Response } from 'express';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { NextFunction, Request, Response } from 'express';
 import { and, desc, gte, inArray, lte, sql } from 'drizzle-orm';
 import { analyticsEvents, aiDailyBudgets, aiRequestLogs } from '../drizzle/schema';
 import { ENV } from './_core/env';
@@ -113,6 +113,35 @@ function isDashboardHost(req: Request): boolean {
   return req.hostname.toLowerCase() === ENV.analyticsDashboardHost.toLowerCase();
 }
 
+function safeEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** data 子域名使用浏览器原生密码框保护；验证后浏览器会在当前设备保留凭据。 */
+export function protectAnalyticsDashboard(req: Request, res: Response, next: NextFunction) {
+  if (!ENV.isProduction) return next();
+  if (!isDashboardHost(req)) return next();
+  if (!ENV.analyticsDashboardPassword) {
+    return res.status(503).send('数据看板密码尚未配置。');
+  }
+  const authorization = req.get('authorization') ?? '';
+  if (authorization.startsWith('Basic ')) {
+    try {
+      const decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8');
+      const separator = decoded.indexOf(':');
+      const username = separator >= 0 ? decoded.slice(0, separator) : '';
+      const password = separator >= 0 ? decoded.slice(separator + 1) : '';
+      if (safeEqual(username, 'rita') && safeEqual(password, ENV.analyticsDashboardPassword)) return next();
+    } catch {
+      // 统一返回认证提示，不暴露解析细节。
+    }
+  }
+  res.setHeader('WWW-Authenticate', 'Basic realm="众见六爻数据看板", charset="UTF-8"');
+  return res.status(401).send('需要数据看板密码。');
+}
+
 type CloudflareDay = { date: string; requests: number; visitors: number; bandwidth: number };
 
 async function fetchCloudflareDaily(from: string, to: string): Promise<{
@@ -168,11 +197,6 @@ async function fetchCloudflareDaily(from: string, to: string): Promise<{
 
 export async function getAnalyticsDashboard(req: Request, res: Response) {
   if (!isDashboardHost(req)) return res.status(404).json({ error: 'Not found' });
-  // 正式环境由 Cloudflare Access 保护 data 子域名；该头代表已通过 Access。
-  if (ENV.isProduction && !req.get('cf-access-authenticated-user-email')) {
-    return res.status(401).json({ error: '请先通过数据看板身份验证。' });
-  }
-
   const days = Math.min(Math.max(Number.parseInt(String(req.query.days ?? '30'), 10) || 30, 7), 90);
   const from = dateDaysAgo(days - 1);
   const to = chinaDate();

@@ -14,7 +14,7 @@ import {
 } from "./security";
 import { createHealthHandler } from "./health";
 import { handleReadingStream } from "../routers/reading";
-import { getAnalyticsDashboard, recordAnalyticsEvent } from "../analytics";
+import { getAnalyticsDashboard, protectAnalyticsDashboard, recordAnalyticsEvent } from "../analytics";
 import {
   findAvailableDevelopmentPort,
   getDevelopmentPreferredPort,
@@ -26,6 +26,7 @@ async function startServer() {
   const server = createServer(app);
   app.disable("x-powered-by");
   app.use(applySecurityHeaders);
+  app.use(protectAnalyticsDashboard);
   // 只有在部署环境明确开启时才信任代理头，避免本地伪造 X-Forwarded-For 绕过限流。
   if (ENV.trustProxy) app.set("trust proxy", 1);
   // 本项目不接收用户文件；限制请求体以降低资源耗尽风险。
