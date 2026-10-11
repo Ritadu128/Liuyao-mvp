@@ -6,6 +6,7 @@ import {
   FANG_SONG, SONG,
   ScrollCard, ScrollDivider, WaveLine, SealButton, Disclaimer,
 } from '@/components/ScrollUI';
+import { trackEvent } from '@/lib/analytics';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -30,6 +31,7 @@ export default function QuestionPage() {
     if (q.length < 4) { setError('问题至少需要四字'); return; }
     reset();
     setQuestion(q);
+    trackEvent('question_submitted', '/');
     navigate('/throw');
   };
 

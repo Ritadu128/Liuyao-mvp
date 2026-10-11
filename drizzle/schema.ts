@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -103,3 +103,22 @@ export const aiRequestLogs = mysqlTable("aiRequestLogs", {
 });
 
 export type AiRequestLog = typeof aiRequestLogs.$inferSelect;
+
+// 隐私友好的站内事件：不保存原始 IP、问题内容或完整来源 URL。
+export const analyticsEvents = mysqlTable("analyticsEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  date: varchar("date", { length: 10 }).notNull(),
+  eventName: varchar("eventName", { length: 48 }).notNull(),
+  path: varchar("path", { length: 128 }).notNull(),
+  sessionHash: varchar("sessionHash", { length: 32 }).notNull(),
+  referrerHost: varchar("referrerHost", { length: 128 }),
+  deviceType: varchar("deviceType", { length: 16 }).notNull(),
+  country: varchar("country", { length: 8 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => [
+  index("analytics_events_date_event_idx").on(table.date, table.eventName),
+  index("analytics_events_date_path_idx").on(table.date, table.path),
+  index("analytics_events_date_session_idx").on(table.date, table.sessionHash),
+]);
+
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;

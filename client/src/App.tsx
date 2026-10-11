@@ -1,7 +1,8 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
+import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { DivinationProvider } from "./contexts/DivinationContext";
@@ -11,6 +12,14 @@ import ThrowPage from "./pages/ThrowPage";
 import ResultPage from "./pages/ResultPage";
 import HistoryPage from "./pages/HistoryPage";
 import { DisclaimerPage, PrivacyPage } from "./pages/LegalPages";
+import AnalyticsDashboard from "./pages/AnalyticsDashboard";
+import { trackEvent } from "./lib/analytics";
+
+function PageViewTracker() {
+  const [location] = useLocation();
+  useEffect(() => { trackEvent('page_view', location); }, [location]);
+  return null;
+}
 
 function Router() {
   return (
@@ -21,6 +30,7 @@ function Router() {
       <Route path={"/history"} component={HistoryPage} />
       <Route path={"/privacy"} component={PrivacyPage} />
       <Route path={"/disclaimer"} component={DisclaimerPage} />
+      <Route path={"/data"} component={AnalyticsDashboard} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -28,6 +38,8 @@ function Router() {
 }
 
 function App() {
+  const dashboardHost = window.location.hostname === 'data.liuyao.win';
+  if (dashboardHost) return <AnalyticsDashboard />;
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
@@ -39,6 +51,7 @@ function App() {
           {/* 占卜状态全局 Context */}
           <DivinationProvider>
             <div className="relative z-10">
+              <PageViewTracker />
               <Router />
             </div>
           </DivinationProvider>

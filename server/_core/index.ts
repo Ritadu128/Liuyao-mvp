@@ -14,6 +14,7 @@ import {
 } from "./security";
 import { createHealthHandler } from "./health";
 import { handleReadingStream } from "../routers/reading";
+import { getAnalyticsDashboard, recordAnalyticsEvent } from "../analytics";
 import {
   findAvailableDevelopmentPort,
   getDevelopmentPreferredPort,
@@ -33,6 +34,8 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "100kb", extended: false }));
   // 仅返回就绪状态；用于 Railway 切流前确认 MySQL 私有连接可用。
   app.get("/health", createHealthHandler());
+  app.post("/api/analytics/event", enforceSameOriginApiMutations, recordAnalyticsEvent);
+  app.get("/api/admin/analytics", getAnalyticsDashboard);
   // OAuth 为后续可选能力；匿名版本未配置认证环境变量时不注册回调路由。
   if (process.env.OAUTH_SERVER_URL && process.env.VITE_APP_ID && process.env.JWT_SECRET) {
     const { registerOAuthRoutes } = await import("./oauth");

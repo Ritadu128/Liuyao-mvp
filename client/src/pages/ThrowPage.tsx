@@ -21,6 +21,7 @@ import CoinScene, { type CoinFace } from '@/components/CoinScene';
 import { GestureThrowButton, GestureThrowIndicator } from '@/components/GestureThrowControls';
 import { useGestureThrow } from '@/hooks/useGestureThrow';
 import type { ThrowResult } from '@/lib/liuyao';
+import { trackEvent } from '@/lib/analytics';
 
 // ─── 六爻线条（HUD 内使用）────────────────────────────────────────────────
 function HexLineHUD({ value, isActive }: { value: number | null; isActive: boolean }) {
@@ -102,6 +103,7 @@ export default function ThrowPage() {
       '| 变卦:', hexResult.changedBits,
       '| 动爻:', hexResult.movingLines);
     setHexagramResult(hexResult);
+    trackEvent('casting_completed', '/throw');
   }, [setHexagramResult]);
 
   // ── 动画完成回调 ──────────────────────────────────────────────────────────

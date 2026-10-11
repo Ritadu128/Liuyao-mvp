@@ -22,4 +22,7 @@ export const ENV = {
   aiBudgetAlertEmail: process.env.AI_BUDGET_ALERT_EMAIL ?? "",
   aiBudgetAlertFrom: process.env.AI_BUDGET_ALERT_FROM ?? "众见六爻 <onboarding@resend.dev>",
   trustProxy: process.env.TRUST_PROXY === "true",
+  analyticsDashboardHost: process.env.ANALYTICS_DASHBOARD_HOST ?? "data.liuyao.win",
+  cloudflareAnalyticsToken: process.env.CLOUDFLARE_ANALYTICS_TOKEN ?? "",
+  cloudflareZoneId: process.env.CLOUDFLARE_ZONE_ID ?? "",
 };

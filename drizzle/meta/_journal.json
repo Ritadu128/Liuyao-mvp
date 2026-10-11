@@ -36,6 +36,13 @@
       "when": 1790790781649,
       "tag": "0004_keen_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1791691200000,
+      "tag": "0005_analytics_dashboard",
+      "breakpoints": true
     }
   ]
 }
