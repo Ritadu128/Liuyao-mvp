@@ -154,8 +154,8 @@ async function fetchCloudflareDaily(from: string, to: string): Promise<{
     viewer { zones(filter: { zoneTag: $zoneTag }) {
       httpRequestsAdaptiveGroups(limit: 1000, filter: $filter, orderBy: [date_ASC]) {
         dimensions { date }
-        sum { requests bytes }
-        uniq { uniques }
+        count
+        sum { visits edgeResponseBytes }
       }
     } }
   }`;
@@ -173,7 +173,7 @@ async function fetchCloudflareDaily(from: string, to: string): Promise<{
     });
     const payload = await response.json() as {
       data?: { viewer?: { zones?: Array<{ httpRequestsAdaptiveGroups?: Array<{
-        dimensions?: { date?: string }; sum?: { requests?: number; bytes?: number }; uniq?: { uniques?: number };
+        dimensions?: { date?: string }; count?: number; sum?: { visits?: number; edgeResponseBytes?: number };
       }> }> } };
       errors?: Array<{ message?: string }>;
     };
@@ -185,9 +185,9 @@ async function fetchCloudflareDaily(from: string, to: string): Promise<{
       configured: true,
       daily: groups.map(group => ({
         date: group.dimensions?.date ?? '',
-        requests: Number(group.sum?.requests ?? 0),
-        visitors: Number(group.uniq?.uniques ?? 0),
-        bandwidth: Number(group.sum?.bytes ?? 0),
+        requests: Number(group.count ?? 0),
+        visitors: Number(group.sum?.visits ?? 0),
+        bandwidth: Number(group.sum?.edgeResponseBytes ?? 0),
       })).filter(day => day.date),
     };
   } catch (error) {
