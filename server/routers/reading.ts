@@ -216,6 +216,7 @@ const YaoCiSchema = z.object({
 });
 
 const GenerateInputSchema = z.object({
+  locale: z.enum(['zh-CN', 'en-US']).default('zh-CN'),
   question: z.string().trim().min(1).max(200),
   originalKey: HexagramKeySchema,
   originalName: HexagramNameSchema,
@@ -238,6 +239,14 @@ const ReadingStreamInputSchema = GenerateInputSchema.extend({
 });
 
 type GenerateInput = z.infer<typeof GenerateInputSchema>;
+
+function localized(locale: GenerateInput['locale'], zh: string, en: string) {
+  return locale === 'en-US' ? en : zh;
+}
+
+function containsCjk(value: string) {
+  return /[\u3400-\u9fff]/u.test(value);
+}
 /**
  * 客户端只负责展示，服务端在消耗 AI 额度前重新根据六次投掷校验排盘。
  * 这样即使旧缓存或被篡改的请求把上下卦、动爻或变卦传错，也不会生成错误解读。
@@ -290,6 +299,13 @@ export function getCastingValidationError(input: GenerateInput): string | null {
 const LINE_POSITION_LABELS = ['初', '二', '三', '四', '五', '上'];
 
 function buildPrompt(input: GenerateInput): string {
+  const english = input.locale === 'en-US';
+  const sectionHeadings = english
+    ? '## 1. Classical meaning and interpretation\n## 2. Modern interpretation\n## 3. Story and metaphor'
+    : '## 一、经文原文与释义\n## 二、现代解读\n## 三、故事化解读';
+  const languageRule = english
+    ? 'Output every user-visible word in natural English. Do not output Chinese characters. Treat the Chinese source text below as internal source material: translate its meaning into English instead of quoting it in Chinese.'
+    : '全部内容必须使用简体中文，文白相间，既有古典韵味又通俗易懂。';
   const movingDesc = input.movingLines.length > 0
     ? `动爻：${input.movingLines.map(position => LINE_POSITION_LABELS[position - 1] + '爻').join('、')}`
     : '无动爻（纯卦）';
@@ -320,25 +336,19 @@ ${yaoCiBlock}
 
 请提供两部分解读，严格按照以下 JSON 格式返回：
 {
-  "integrated_reading": "综合解读内容（使用 Markdown，400-600字）",
-  "hexagram_reading": "卦象解读内容（使用 Markdown，必须包含以下三个章节，每章节用 ## 标题标注，共约400-500字）"
+  "integrated_reading": "${english ? 'Overview in Markdown, about 500-800 English words' : '综合解读内容（使用 Markdown，400-600字）'}",
+  "hexagram_reading": "${english ? 'Detailed reading in Markdown with all three required sections, about 500-800 English words' : '卦象解读内容（使用 Markdown，必须包含以下三个章节，每章节用 ## 标题标注，共约400-500字）'}"
 }
 
 【卦象解读必须严格包含以下三个章节，缺一不可】
-## 一、经文原文与释义
-引用卦辞、象曰原文（仅限【经文原文】区块中的原句），逐句解释其字面含义与象征意义。
-
-## 二、现代解读
-结合提问者的具体问题，用现代语言解释本卦对此问题的启示，分析当前处境与走向。
-
-## 三、故事化解读
-用一个生动的故事、场景或比喻来阐释本卦卦义，使抽象的卦理变得直观易懂。
+${sectionHeadings}
+${english ? 'Explain the source meaning, apply it to the question in modern language, and finish with a vivid story or metaphor.' : '引用卦辞、象曰原文（仅限【经文原文】区块中的原句），解释其含义；再结合具体问题作现代解读，并用故事或比喻使卦理直观易懂。'}
 
 【综合解读要求】
 使用 Markdown 格式，用 ## 标题分节（如：## 卦象总论、## 动爻分析、## 综合建议），关键词或核心建议用 **加粗** 标注。
 
 【通用要求】
-1. 语言：文白相间，既有古典韵味又通俗易懂
+1. 语言：${languageRule}
 2. 态度：客观中立，不做绝对预测，引导积极思考
 3. 【重要】经文引用规则：只能引用【经文原文】区块中提供的原句，不得自行补充、杜撰或引用未出现在输入中的经文。若某字段标注“（缺失）”，则在对应位置直接留空，不得替换为其他经文
 4. 本产品当前采用本卦、动爻、变卦和《周易》经文的简化解读，不包含起卦年月日、月建日辰、纳甲、世应、六亲、六神、旬空等信息；不得假装已完成这些传统六爻纳甲判断
@@ -347,12 +357,12 @@ ${yaoCiBlock}
 7. 严格返回合法 JSON，不要有额外文字，JSON 值中的换行用 \\n 表示`;
 }
 
-function getDeepSeekError(error: unknown): TRPCError {
+function getDeepSeekError(error: unknown, locale: GenerateInput['locale'] = 'zh-CN'): TRPCError {
   if (error instanceof TRPCError) return error;
   if ((error instanceof DeepSeekRequestError || error instanceof DeepSeekStreamError) && error.kind === 'timeout') {
-    return new TRPCError({ code: 'TIMEOUT', message: '解读生成超时，请稍后重试。' });
+    return new TRPCError({ code: 'TIMEOUT', message: localized(locale, '解读生成超时，请稍后重试。', 'The reading timed out. Please try again later.') });
   }
-  return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: '解读生成失败，请稍后重试。' });
+  return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: localized(locale, '解读生成失败，请稍后重试。', 'The reading could not be generated. Please try again later.') });
 }
 
 async function saveAuthenticatedReading(
@@ -411,9 +421,12 @@ function beginSseResponse(res: Response) {
   res.write(': connected\n\n');
 }
 
-async function writeDevelopmentMockStream(res: Response) {
+async function writeDevelopmentMockStream(res: Response, locale: GenerateInput['locale']) {
   beginSseResponse(res);
-  const mock: StreamedReading = {
+  const mock: StreamedReading = locale === 'en-US' ? {
+    integrated_reading: '## Overview\n\nThis local preview confirms that the reading streams progressively and exports correctly.\n\n## Guidance\n\nStay composed and proceed one step at a time.',
+    hexagram_reading: '## 1. Classical meaning and interpretation\n\nA local preview interpretation.\n\n## 2. Modern interpretation\n\nObserve first, then act.\n\n## 3. Story and metaphor\n\nLike a boat on water, adjust the sail as conditions change.',
+  } : {
     integrated_reading: '## 卦象总论\n\n此为本地界面验收内容，用于确认解读会逐步出现，并验证电脑端长图保存。\n\n## 综合建议\n\n保持从容，循序推进。',
     hexagram_reading: '## 一、经文原文与释义\n\n本地测试释义。\n\n## 二、现代解读\n\n先观察，再行动。\n\n## 三、故事化解读\n\n如舟行水上，顺势调帆。',
   };
@@ -449,13 +462,15 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
     });
   });
 
+  const requestedLocale: GenerateInput['locale'] = req.body?.locale === 'en-US' ? 'en-US' : 'zh-CN';
   const parsedInput = ReadingStreamInputSchema.safeParse(req.body);
   if (!parsedInput.success) {
     logReadingEvent('error', 'invalid_input', { requestId });
     await updateAiRequestLog(requestId, { status: 'rejected', httpStatus: 400, failureKind: 'invalid_input' });
-    return res.status(400).json({ error: '占卜参数格式无效，请重新起卦。', requestId });
+    return res.status(400).json({ error: localized(requestedLocale, '占卜参数格式无效，请重新起卦。', 'The casting data is invalid. Please cast again.'), requestId });
   }
   const { turnstileToken, ...readingInput } = parsedInput.data;
+  const locale = readingInput.locale;
   const castingError = getCastingValidationError(readingInput);
   if (castingError) {
     logReadingEvent('error', 'invalid_casting', { requestId, reason: castingError });
@@ -465,18 +480,18 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       failureKind: 'invalid_casting',
     });
     return res.status(400).json({
-      error: '排盘校验失败，请刷新页面后重新起卦。',
+      error: localized(locale, '排盘校验失败，请刷新页面后重新起卦。', 'Casting validation failed. Refresh and cast again.'),
       requestId,
     });
   }
   if (process.env.NODE_ENV === 'development' && process.env.MOCK_READING_STREAM === 'true') {
-    await writeDevelopmentMockStream(res);
+    await writeDevelopmentMockStream(res, locale);
     return;
   }
   if (!ENV.deepseekApiKey) {
     logReadingEvent('error', 'missing_api_key', { requestId });
     await updateAiRequestLog(requestId, { status: 'rejected', httpStatus: 412, failureKind: 'missing_api_key' });
-    return res.status(412).json({ error: '解读服务尚未配置，请稍后再试。', requestId });
+    return res.status(412).json({ error: localized(locale, '解读服务尚未配置，请稍后再试。', 'The reading service is not configured. Please try again later.'), requestId });
   }
 
   let rateLimitConsumed = false;
@@ -495,7 +510,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
           failureKind: 'turnstile_required',
         });
         return res.status(403).json({
-          error: '今日已完成 5 次解读，请先完成人机验证后继续。',
+          error: localized(locale, '今日已完成 5 次解读，请先完成人机验证后继续。', 'You have completed five readings today. Please verify that you are human to continue.'),
           code: 'TURNSTILE_REQUIRED',
           siteKey: ENV.turnstileSiteKey,
           requestId,
@@ -516,7 +531,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
           failureKind: 'turnstile_failed',
         });
         return res.status(403).json({
-          error: '人机验证未通过或已过期，请重新验证。',
+          error: localized(locale, '人机验证未通过或已过期，请重新验证。', 'Verification failed or expired. Please try again.'),
           code: 'TURNSTILE_FAILED',
           siteKey: ENV.turnstileSiteKey,
           requestId,
@@ -527,7 +542,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       if (!rateCheck.allowed) {
         throw new TRPCError({
           code: 'TOO_MANY_REQUESTS',
-          message: `今日解读次数已达上限（每天最多 ${DAILY_LIMIT} 次），请明天再来使用吧～`,
+          message: localized(locale, `今日解读次数已达上限（每天最多 ${DAILY_LIMIT} 次），请明天再来使用吧～`, `Today's reading limit (${DAILY_LIMIT}) has been reached. Please return tomorrow.`),
         });
       }
     }
@@ -538,7 +553,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       turnstileVerified: turnstileVerified ? 1 : 0,
     });
   } catch (error) {
-    const publicError = error instanceof TRPCError ? error : getDeepSeekError(error);
+    const publicError = error instanceof TRPCError ? error : getDeepSeekError(error, locale);
     logReadingEvent('error', 'rate_limit_rejected', {
       requestId,
       code: publicError.code,
@@ -578,7 +593,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
         await notifyBudgetLimitOnce(rateLimitDate);
         throw new TRPCError({
           code: 'TOO_MANY_REQUESTS',
-          message: '今日网站整体 AI 使用额度已达上限，请明天再来使用吧～',
+          message: localized(locale, '今日网站整体 AI 使用额度已达上限，请明天再来使用吧～', "Today's shared AI allowance has been reached. Please return tomorrow."),
         });
       }
       attemptCount = attempt;
@@ -596,17 +611,25 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
           messages: [
             {
               role: 'system',
-              content: '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。',
+              content: locale === 'en-US'
+                ? 'You are a careful I Ching cultural interpreter. Use only the supplied source material. Return every user-visible word in natural English and never output Chinese characters.'
+                : '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。全部输出使用简体中文。',
             },
             { role: 'user', content: buildPrompt(readingInput) },
           ],
           timeoutMs: getDeepSeekTimeoutMs(),
           signal: disconnectController.signal,
           onDelta: (section: ReadingSection, text: string) => {
+            if (locale === 'en-US' && containsCjk(text)) {
+              throw new DeepSeekStreamError('invalid_response');
+            }
             partial[section] += text;
             writeSseEvent(res, 'delta', { section, text });
           },
         });
+        if (locale === 'en-US' && (containsCjk(generated.integrated_reading) || containsCjk(generated.hexagram_reading))) {
+          throw new DeepSeekStreamError('invalid_response');
+        }
         const estimatedCostMicros = estimateDeepSeekCostMicros(generated.diagnostics);
         await settleAiBudget(rateLimitDate, estimatedCostMicros);
         totalEstimatedCostMicros += estimatedCostMicros;
@@ -695,7 +718,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       rateLimitConsumed = false;
     }
     if (!disconnectController.signal.aborted) {
-      const publicError = getDeepSeekError(error);
+      const publicError = getDeepSeekError(error, locale);
       const currentPartial = attemptPartials.at(-1) ?? { integrated: '', hexagram: '' };
       const bestPartial = attemptPartials.reduce((best, candidate) => {
         const bestLength = best.integrated.length + best.hexagram.length;

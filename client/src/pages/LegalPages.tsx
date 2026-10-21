@@ -2,21 +2,23 @@ import { Link } from 'wouter';
 import { ArrowLeft } from 'lucide-react';
 import { CloudPattern, FANG_SONG, ScrollCard, ScrollDivider, SONG } from '@/components/ScrollUI';
 import { PUBLIC_CONFIG } from '@/lib/publicConfig';
+import { useI18n } from '@/i18n/I18nContext';
 
 type LegalSection = { title: string; paragraphs: string[] };
 
 function LegalPage({ title, subtitle, sections }: { title: string; subtitle: string; sections: LegalSection[] }) {
+  const { t } = useI18n();
   return (
     <main className="relative min-h-screen" style={{ background: 'var(--bg-paper, #faf6ed)' }}>
       <div className="fixed inset-0 pointer-events-none"><CloudPattern opacity={0.025} /></div>
       <div className="relative z-10 mx-auto max-w-2xl px-4 py-8 sm:py-12">
         <Link href="/" className="inline-flex items-center gap-1 text-[0.78rem] tracking-[0.12em] text-amber-800/65 hover:text-amber-900" style={{ fontFamily: FANG_SONG }}>
-          <ArrowLeft size={14} aria-hidden="true" /> 返回占卜首页
+          <ArrowLeft size={14} aria-hidden="true" /> {t('backHome')}
         </Link>
         <header className="py-8 text-center">
           <p className="mb-3 text-[0.72rem] tracking-[0.34em] text-amber-700/55" style={{ fontFamily: FANG_SONG }}>{subtitle}</p>
           <h1 className="text-3xl tracking-[0.2em] text-stone-800" style={{ fontFamily: SONG }}>{title}</h1>
-          <p className="mt-4 text-[0.72rem] tracking-[0.08em] text-stone-500" style={{ fontFamily: FANG_SONG }}>最后更新：{PUBLIC_CONFIG.policyUpdatedAt}</p>
+          <p className="mt-4 text-[0.72rem] tracking-[0.08em] text-stone-500" style={{ fontFamily: FANG_SONG }}>{t('lastUpdated', { date: PUBLIC_CONFIG.policyUpdatedAt })}</p>
         </header>
         <article className="space-y-4">
           {sections.map(section => (
@@ -29,8 +31,8 @@ function LegalPage({ title, subtitle, sections }: { title: string; subtitle: str
           ))}
         </article>
         <footer className="py-8 text-center text-[0.74rem] leading-7 text-stone-500" style={{ fontFamily: FANG_SONG }}>
-          <p>如需就隐私或内容联系项目作者，请使用：{PUBLIC_CONFIG.contactEmail}</p>
-          <p className="mt-2"><Link href="/privacy" className="underline underline-offset-4">隐私政策</Link><span className="mx-2">·</span><Link href="/disclaimer" className="underline underline-offset-4">免责声明</Link></p>
+          <p>{t('contactPrivacy', { email: PUBLIC_CONFIG.contactEmail })}</p>
+          <p className="mt-2"><Link href="/privacy" className="underline underline-offset-4">{t('privacyPolicy')}</Link><span className="mx-2">·</span><Link href="/disclaimer" className="underline underline-offset-4">{t('disclaimer')}</Link></p>
         </footer>
       </div>
     </main>
@@ -38,6 +40,16 @@ function LegalPage({ title, subtitle, sections }: { title: string; subtitle: str
 }
 
 export function PrivacyPage() {
+  const { locale, t } = useI18n();
+  if (locale === 'en-US') return (
+    <LegalPage title={t('privacyPolicy')} subtitle={t('privacySubtitle')} sections={[
+      { title: 'Scope', paragraphs: ['This policy applies to the current anonymous version of Zhongjian I Ching. It explains how data is handled when you ask a question, request a reading, use local history, enable gesture casting, or support the creator.', 'If login, expanded analytics, payment, or other services are introduced, this policy will be updated before those features launch.'] },
+      { title: 'Data we process', paragraphs: ['When you request an AI interpretation, your question and the casting data required for the reading are sent to this server and then to the DeepSeek API. Do not enter passwords, identity numbers, card details, precise addresses, or unnecessary sensitive information.', 'To enforce anti-abuse limits, the server processes a protected representation of the requesting IP address, the date, request diagnostics, token usage, and cost estimates. Local reading history is stored in this browser under the key liuyao_local_history.'] },
+      { title: 'Camera and gesture recognition', paragraphs: ['The camera starts only after you choose gesture casting and grant permission. MediaPipe processes the video locally in your browser to recognize a closed fist and an open palm. The current application does not upload camera video to this server or to DeepSeek.', 'Camera tracks are stopped when you stop recognition or leave the casting page.'] },
+      { title: 'Local storage and third parties', paragraphs: ['The anonymous version uses localStorage for reading history and language preference. Third-party services include DeepSeek for text generation, Cloudflare Turnstile for abuse prevention, and Google Fonts for typography.', 'Clearing site data, using private browsing, changing browsers, or changing devices can remove local history.'] },
+      { title: 'Security and updates', paragraphs: ['API keys and database credentials are stored only as server-side deployment secrets. Input validation, rate limits, request identifiers, and controlled error handling reduce risk, but no internet or third-party service is completely risk-free.', 'Material policy changes will be reflected in the last-updated date on this page.'] },
+    ]} />
+  );
   return (
     <LegalPage
       title="隐私政策"
@@ -92,6 +104,15 @@ export function PrivacyPage() {
 }
 
 export function DisclaimerPage() {
+  const { locale, t } = useI18n();
+  if (locale === 'en-US') return (
+    <LegalPage title={t('disclaimer')} subtitle={t('disclaimerSubtitle')} sections={[
+      { title: 'Cultural and entertainment use', paragraphs: ['This product and its AI-generated content are for I Ching cultural study, general information, and entertainment. A casting or interpretation is not a guarantee, promise, or prediction of facts or future events.'] },
+      { title: 'Not professional advice', paragraphs: ['This product does not provide medical, investment, legal, tax, or other professional advice and should not be the sole basis for a high-risk or important decision.', 'For medical, legal, financial, safety, or mental-health matters, consult a qualified professional and contact local emergency services when immediate help is needed.'] },
+      { title: 'AI and third-party services', paragraphs: ['Interpretations are generated through the DeepSeek API from the question and supplied source material. Model output may be incomplete or wrong and does not represent the position of the creator, service providers, or classical texts.'] },
+      { title: 'Availability and responsibility', paragraphs: ['We work to keep the service available and secure but cannot guarantee uninterrupted, error-free operation. Browser, camera, network, third-party API, and device compatibility may affect features.'] },
+    ]} />
+  );
   return (
     <LegalPage
       title="免责声明"

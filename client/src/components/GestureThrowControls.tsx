@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Hand, X } from 'lucide-react';
 import type { GestureStatus } from '@/hooks/useGestureThrow';
+import { useI18n } from '@/i18n/I18nContext';
 
-const STATUS_CONFIG: Record<GestureStatus, { label: string; color: string }> = {
-  IDLE: { label: '正在准备手势投掷…', color: '#8a6a2f' },
-  READY: { label: '请握拳蓄力', color: '#7a5c10' },
-  CHARGING: { label: '张开手掌投掷', color: '#a66f08' },
-  THROWING: { label: '投掷中', color: '#8b4b16' },
-  COOLDOWN: { label: '准备下一爻', color: '#82766a' },
+const STATUS_CONFIG: Record<GestureStatus, { key: 'gesturePreparing' | 'gestureFist' | 'gestureOpen' | 'gestureThrowing' | 'gestureNext'; color: string }> = {
+  IDLE: { key: 'gesturePreparing', color: '#8a6a2f' },
+  READY: { key: 'gestureFist', color: '#7a5c10' },
+  CHARGING: { key: 'gestureOpen', color: '#a66f08' },
+  THROWING: { key: 'gestureThrowing', color: '#8b4b16' },
+  COOLDOWN: { key: 'gestureNext', color: '#82766a' },
 };
 
 interface GestureThrowIndicatorProps {
@@ -29,6 +30,7 @@ export function GestureThrowIndicator({
   error,
   disabled = false,
 }: GestureThrowIndicatorProps) {
+  const { t } = useI18n();
   const [loadingSeconds, setLoadingSeconds] = useState(0);
 
   useEffect(() => {
@@ -50,11 +52,11 @@ export function GestureThrowIndicator({
     ? error
     : isLoading
       ? cameraActive
-        ? `准备手势识别 ${loadingSeconds}秒`
-        : '正在请求并启动摄像头…'
+        ? `${t('gesturePreparing')} ${loadingSeconds}s`
+        : t('gestureRequestingCamera')
       : disabled && status === 'READY'
-        ? '投掷动画进行中…'
-        : config.label;
+        ? t('gestureThrowing')
+        : t(config.key);
   const color = error ? '#9a3412' : config.color;
   const isCharging = status === 'CHARGING';
 
@@ -103,7 +105,7 @@ export function GestureThrowIndicator({
           {label}
         </span>
         {!error && <div
-            aria-label={`蓄力值 ${Math.round(powerPreview * 100)}%`}
+            aria-label={t('gesturePower', { percent: Math.round(powerPreview * 100) })}
             style={{
               flex: '1 1 96px',
               minWidth: '48px',
@@ -157,9 +159,10 @@ export function GestureThrowButton({
   onStart,
   onStop,
 }: GestureThrowButtonProps) {
+  const { t } = useI18n();
   const isActive = gestureEnabled || isLoading;
   const actionDisabled = disabled && !isActive;
-  const label = isLoading ? '取消启动' : gestureEnabled ? '关闭手势' : '手势投掷';
+  const label = isLoading ? t('gestureCancel') : gestureEnabled ? t('gestureClose') : t('gestureStart');
 
   return (
     <button
@@ -167,7 +170,7 @@ export function GestureThrowButton({
       onClick={isActive ? onStop : onStart}
       disabled={actionDisabled}
       aria-pressed={gestureEnabled}
-      title={gestureEnabled ? '关闭摄像头与手势识别' : '开启摄像头，用握拳和张掌完成投掷'}
+      title={label}
       style={{
         flex: 1,
         minWidth: 0,

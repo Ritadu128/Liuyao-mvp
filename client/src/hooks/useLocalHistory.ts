@@ -8,6 +8,7 @@ const STORAGE_KEY = 'liuyao_local_history';
 const MAX_LOCAL_RECORDS = 30;
 
 export interface LocalReading {
+  locale?: 'zh-CN' | 'en-US';
   id: string;           // 本地唯一 ID（时间戳字符串）
   question: string;
   linesJson: string;

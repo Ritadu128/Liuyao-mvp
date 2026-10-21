@@ -14,6 +14,8 @@ import HistoryPage from "./pages/HistoryPage";
 import { DisclaimerPage, PrivacyPage } from "./pages/LegalPages";
 import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import { trackEvent } from "./lib/analytics";
+import { I18nProvider } from "./i18n/I18nContext";
+import { LanguageSwitcher } from "./components/LanguageSwitcher";
 
 function PageViewTracker() {
   const [location] = useLocation();
@@ -42,6 +44,7 @@ function App() {
   if (dashboardHost) return <AnalyticsDashboard />;
   return (
     <ErrorBoundary>
+      <I18nProvider>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
@@ -50,6 +53,7 @@ function App() {
           <AncientBackground />
           {/* 占卜状态全局 Context */}
           <DivinationProvider>
+            <LanguageSwitcher />
             <div className="relative z-10">
               <PageViewTracker />
               <Router />
@@ -57,6 +61,7 @@ function App() {
           </DivinationProvider>
         </TooltipProvider>
       </ThemeProvider>
+      </I18nProvider>
     </ErrorBoundary>
   );
 }

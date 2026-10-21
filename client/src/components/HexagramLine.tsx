@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import type { LineValue } from '@/lib/liuyao';
 import { getLineDisplay } from '@/lib/liuyao';
+import { useI18n } from '@/i18n/I18nContext';
 
 interface HexagramLineProps {
   value: LineValue;
@@ -11,6 +12,7 @@ interface HexagramLineProps {
 }
 
 export function HexagramLine({ value, position, animate = false, size = 'md' }: HexagramLineProps) {
+  const { t } = useI18n();
   const display = getLineDisplay(value);
   const sizeMap = {
     sm: { bar: 'h-1', gap: 'gap-1.5', text: 'text-xs' },
@@ -48,15 +50,10 @@ export function HexagramLine({ value, position, animate = false, size = 'md' }: 
       </div>
       {/* 爻位标注 */}
       <div className={cn('shrink-0 text-stone-400 w-8 text-right', s.text)}>
-        {getPositionLabel(position)}
+        {[t('lineInitial'), t('lineSecond'), t('lineThird'), t('lineFourth'), t('lineFifth'), t('lineTop')][position - 1] ?? ''}
       </div>
     </div>
   );
-}
-
-function getPositionLabel(pos: number): string {
-  const labels = ['初', '二', '三', '四', '五', '上'];
-  return labels[pos - 1] ?? '';
 }
 
 /**

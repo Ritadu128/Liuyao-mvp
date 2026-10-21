@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useI18n } from '@/i18n/I18nContext';
 import { FilesetResolver, GestureRecognizer } from '@mediapipe/tasks-vision';
 import {
   canReleaseGesture,
@@ -131,36 +132,37 @@ function waitForVideoReady(video: HTMLVideoElement): Promise<void> {
   });
 }
 
-function getCameraErrorMessage(error: unknown): string {
+function getCameraErrorKey(error: unknown): 'cameraDenied' | 'cameraMissing' | 'cameraBusy' | 'gestureModelBlocked' | 'cameraPlaybackFailed' | 'gestureModelTimeout' | 'gestureCameraError' {
   if (error instanceof DOMException) {
     if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
-      return '摄像头权限被拒绝。请在浏览器地址栏允许摄像头后重新启动。';
+      return 'cameraDenied';
     }
     if (error.name === 'NotFoundError') {
-      return '未检测到可用摄像头。请连接摄像头后重试。';
+      return 'cameraMissing';
     }
     if (error.name === 'NotReadableError') {
-      return '摄像头正被其他应用占用。请关闭其他占用后重试。';
+      return 'cameraBusy';
     }
   }
   if (error instanceof Error) {
     if (error instanceof WebAssembly.CompileError || /WebAssembly|wasm|Content Security Policy/i.test(error.message)) {
-      return '手势模型被浏览器安全策略阻止。请刷新页面后重新启动手势投掷。';
+      return 'gestureModelBlocked';
     }
     if (error.message === 'CAMERA_READY_TIMEOUT' || error.message === 'CAMERA_PLAYBACK_FAILED') {
-      return '已取得摄像头权限，但画面没有成功启动。请关闭占用摄像头的应用，刷新页面后重试。';
+      return 'cameraPlaybackFailed';
     }
     if (error.message === 'GESTURE_MODEL_TIMEOUT') {
-      return '摄像头已打开，但手势模型加载超时。请刷新页面后重试。';
+      return 'gestureModelTimeout';
     }
   }
-  return '手势识别启动失败。请检查摄像头和浏览器权限后重试。';
+  return 'gestureCameraError';
 }
 
 export function useGestureThrow(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   { onThrow, disabled = false }: GestureThrowOptions = {},
 ) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<GestureStatus>('IDLE');
   const [gestureEnabled, setGestureEnabled] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
@@ -378,7 +380,7 @@ export function useGestureThrow(
     const video = videoRef.current;
     if (!video || isLoading || gestureEnabled) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('当前浏览器不支持摄像头访问。请使用最新版 Chrome、Edge 或 Safari。');
+      setError(t('cameraUnsupported'));
       return;
     }
 
@@ -454,7 +456,7 @@ export function useGestureThrow(
         track.addEventListener('ended', () => {
           if (session !== startSessionRef.current) return;
           stop();
-          setError('摄像头连接已中断。请检查设备后重新启动手势投掷。');
+          setError(t('cameraInterrupted'));
         }, { once: true });
       });
       const { recognizer, error: recognizerError } = await recognizerAttempt;
@@ -479,7 +481,7 @@ export function useGestureThrow(
       startSessionRef.current += 1;
       preloadController.abort();
       if (preloadAbortRef.current === preloadController) preloadAbortRef.current = null;
-      setError(getCameraErrorMessage(startError));
+      setError(t(getCameraErrorKey(startError)));
       setGestureEnabled(false);
       setCameraActive(false);
       setIsLoading(false);
@@ -488,7 +490,7 @@ export function useGestureThrow(
     } finally {
       if (session === startSessionRef.current) setIsLoading(false);
     }
-  }, [gestureEnabled, isLoading, releaseCamera, resetGestureStability, stop, updateStatus, videoRef]);
+  }, [gestureEnabled, isLoading, releaseCamera, resetGestureStability, stop, t, updateStatus, videoRef]);
 
   useEffect(() => () => {
     startSessionRef.current += 1;

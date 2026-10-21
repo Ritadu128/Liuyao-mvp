@@ -22,6 +22,7 @@ import { GestureThrowButton, GestureThrowIndicator } from '@/components/GestureT
 import { useGestureThrow } from '@/hooks/useGestureThrow';
 import type { ThrowResult } from '@/lib/liuyao';
 import { trackEvent } from '@/lib/analytics';
+import { useI18n } from '@/i18n/I18nContext';
 
 // ─── 六爻线条（HUD 内使用）────────────────────────────────────────────────
 function HexLineHUD({ value, isActive }: { value: number | null; isActive: boolean }) {
@@ -49,6 +50,7 @@ function HexLineHUD({ value, isActive }: { value: number | null; isActive: boole
 
 // ─── 主组件 ────────────────────────────────────────────────────────────────
 export default function ThrowPage() {
+  const { t } = useI18n();
   const [, navigate] = useLocation();
   const { state, addThrow, setThrows, setHexagramResult } = useDivination();
 
@@ -214,7 +216,8 @@ export default function ThrowPage() {
 
   // HUD 展示用：从 ref 读（同步）
   const currentCount = throwCount;
-  const lineLabels   = ['初', '二', '三', '四', '五', '上'];
+  const lineLabels = [t('lineInitial'), t('lineSecond'), t('lineThird'), t('lineFourth'), t('lineFifth'), t('lineTop')];
+  const localLineDescription = (sum: number) => t(`lineValue${sum}` as 'lineValue6' | 'lineValue7' | 'lineValue8' | 'lineValue9');
   const isCastingDone = currentCount >= 6;
 
   return (
@@ -275,7 +278,7 @@ export default function ThrowPage() {
             padding: '4px 6px',
           }}
         >
-          ← 重问
+          {t('throwBack')}
         </button>
 
         <div
@@ -302,7 +305,7 @@ export default function ThrowPage() {
             letterSpacing: '0.05em',
           }}
         >
-          {isCastingDone ? '六爻已成' : `第 ${currentCount + 1} / 6 爻`}
+          {isCastingDone ? t('throwDone') : t('throwCount', { current: currentCount + 1 })}
         </div>
       </div>
 
@@ -365,7 +368,7 @@ export default function ThrowPage() {
               animation: 'fadeInUp 0.35s ease-out',
             }}
           >
-            {lineLabels[lastLineIdx]}爻 · {lastLineDesc}
+            {lineLabels[lastLineIdx]} · {localLineDescription(state.throws[lastLineIdx]?.sum ?? 7)}
           </div>
         )}
 
@@ -384,7 +387,7 @@ export default function ThrowPage() {
               pointerEvents: 'none',
             }}
           >
-            点击下方按钮开始投掷
+            {t('throwHint')}
           </div>
         )}
       </div>
@@ -483,7 +486,7 @@ export default function ThrowPage() {
                   transition: 'all 0.2s ease',
                 }}
               >
-                {isAnimating ? '投掷中…' : `投 第 ${currentCount + 1} 爻`}
+                {isAnimating ? t('gestureThrowing') : t('throwSingle', { number: currentCount + 1 })}
               </button>
 
               {/* 次要操作：手势入口在左，一键成卦在右。 */}
@@ -525,7 +528,7 @@ export default function ThrowPage() {
                       : 'rgba(120,85,20,0.66)';
                   }}
                 >
-                  一键成卦
+                  {t('throwAll')}
                 </button>
               </div>
             </>
@@ -538,7 +541,7 @@ export default function ThrowPage() {
                 letterSpacing: '0.18em',
               }}
             >
-              ✦ 六爻已成，正在推演…
+              {t('throwDeriving')}
             </div>
           )}
         </div>

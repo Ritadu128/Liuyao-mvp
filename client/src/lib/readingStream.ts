@@ -1,4 +1,5 @@
 export type ReadingStreamInput = {
+  locale: 'zh-CN' | 'en-US';
   question: string;
   originalKey: string;
   originalName: string;
@@ -34,8 +35,9 @@ export class ReadingStreamError extends Error {
     public readonly partialAvailable = false,
     public readonly code?: string,
     public readonly siteKey?: string,
+    locale: 'zh-CN' | 'en-US' = 'zh-CN',
   ) {
-    super(requestId ? `${message}（错误编号：${requestId}）` : message);
+    super(requestId ? (locale === 'en-US' ? `${message} (Error ID: ${requestId})` : `${message}（错误编号：${requestId}）`) : message);
   }
 }
 
@@ -55,6 +57,8 @@ export async function streamReading(
   input: ReadingStreamInput,
   { signal, onDelta, onReset, onRetry }: ReadingStreamOptions,
 ): Promise<ReadingStreamResult> {
+  const english = input.locale === 'en-US';
+  const fallback = english ? 'The reading could not be generated. Please try again later.' : '解读生成失败，请稍后重试。';
   const response = await fetch('/api/reading/stream', {
     method: 'POST',
     credentials: 'include',
@@ -71,14 +75,15 @@ export async function streamReading(
       siteKey?: string;
     } | null;
     throw new ReadingStreamError(
-      body?.error ?? '解读生成失败，请稍后重试。',
+      body?.error ?? fallback,
       body?.requestId ?? response.headers.get('x-request-id') ?? undefined,
       false,
       body?.code,
       body?.siteKey,
+      input.locale,
     );
   }
-  if (!response.body) throw new Error('当前浏览器不支持流式解读。');
+  if (!response.body) throw new Error(english ? 'This browser does not support streamed readings.' : '当前浏览器不支持流式解读。');
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -99,7 +104,7 @@ export async function streamReading(
     }
     if (payload.event === 'complete') {
       if (typeof parsed.integratedReading !== 'string' || typeof parsed.hexagramReading !== 'string') {
-        throw new Error('解读返回格式无效，请稍后重试。');
+        throw new Error(english ? 'The reading response was invalid. Please try again.' : '解读返回格式无效，请稍后重试。');
       }
       completed = {
         integratedReading: parsed.integratedReading,
@@ -118,11 +123,12 @@ export async function streamReading(
     }
     if (payload.event === 'error') {
       throw new ReadingStreamError(
-        typeof parsed.message === 'string' ? parsed.message : '解读生成失败，请稍后重试。',
+        typeof parsed.message === 'string' ? parsed.message : fallback,
         typeof parsed.requestId === 'string' ? parsed.requestId : undefined,
         parsed.partialAvailable === true,
         typeof parsed.code === 'string' ? parsed.code : undefined,
         typeof parsed.siteKey === 'string' ? parsed.siteKey : undefined,
+        input.locale,
       );
     }
   };
@@ -140,6 +146,6 @@ export async function streamReading(
   }
 
   if (buffer.trim()) processBlock(buffer);
-  if (!completed) throw new Error('解读连接提前结束，请稍后重试。');
+  if (!completed) throw new Error(english ? 'The reading connection ended early. Please try again.' : '解读连接提前结束，请稍后重试。');
   return completed;
 }

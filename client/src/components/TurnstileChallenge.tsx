@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FANG_SONG } from '@/components/ScrollUI';
+import { useI18n } from '@/i18n/I18nContext';
 
 type TurnstileApi = {
   render: (container: HTMLElement, options: Record<string, unknown>) => string;
@@ -46,6 +47,7 @@ export function TurnstileChallenge({
   error?: string;
   onVerified: (token: string) => void;
 }) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const onVerifiedRef = useRef(onVerified);
   const [loadError, setLoadError] = useState(false);
@@ -88,14 +90,14 @@ export function TurnstileChallenge({
         borderRadius: '12px',
       }}
     >
-      <div className="text-sm tracking-widest">请完成一次人机验证</div>
+      <div className="text-sm tracking-widest">{t('verifyHuman')}</div>
       <p className="mt-2 text-xs leading-relaxed text-stone-500">
-        同一网络今日已完成 5 次解读，验证通过后可继续使用。
+        {t('verifyHumanDescription')}
       </p>
       <div ref={containerRef} className="mx-auto mt-4 min-h-[65px] max-w-[300px]" />
       {(error || loadError) && (
         <p className="mt-3 text-xs text-amber-800/80">
-          {loadError ? '验证组件加载失败，请检查网络后刷新页面。' : error}
+          {loadError ? t('verifyFailed') : error}
         </p>
       )}
     </div>

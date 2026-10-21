@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { Link } from 'wouter';
+import { useI18n } from '@/i18n/I18nContext';
 
 // ─── 字体栈常量 ───────────────────────────────────────────────
 // 主字体：Noto Serif SC（方正书宋风格，Google Fonts 免费）
@@ -224,6 +225,7 @@ export function AncientHeader({
 
 // ─── 问题展示条 ────────────────────────────────────────────────
 export function QuestionBanner({ question }: { question: string }) {
+  const { t } = useI18n();
   return (
     <div
       className="px-4 py-3 mb-5"
@@ -235,7 +237,7 @@ export function QuestionBanner({ question }: { question: string }) {
       }}
     >
       <p className="text-[0.72rem] text-amber-700/55 mb-1 tracking-[0.25em]" style={{ fontFamily: FANG_SONG }}>
-        所问之事
+        {t('questionAsked')}
       </p>
       <p className="text-stone-700 text-[0.9rem] leading-relaxed tracking-wide" style={{ fontFamily: FANG_SONG }}>
         {question}
@@ -246,13 +248,14 @@ export function QuestionBanner({ question }: { question: string }) {
 
 // ─── 底部免责声明 ──────────────────────────────────────────────
 export function Disclaimer() {
+  const { t } = useI18n();
   return (
     <div className="mt-4 text-center text-stone-400/65 text-[0.7rem] leading-6" style={{ fontFamily: FANG_SONG }}>
-      <p className="tracking-[0.14em]">本结果仅供文化研究、一般信息与娱乐参考，请合理看待</p>
+      <p className="tracking-[0.14em]">{t('culturalDisclaimer')}</p>
       <p className="mt-1 tracking-[0.08em]">
-        <Link href="/privacy" className="underline underline-offset-4 hover:text-stone-600">隐私政策</Link>
+        <Link href="/privacy" className="underline underline-offset-4 hover:text-stone-600">{t('privacyPolicy')}</Link>
         <span className="mx-2">·</span>
-        <Link href="/disclaimer" className="underline underline-offset-4 hover:text-stone-600">免责声明</Link>
+        <Link href="/disclaimer" className="underline underline-offset-4 hover:text-stone-600">{t('disclaimer')}</Link>
       </p>
     </div>
   );

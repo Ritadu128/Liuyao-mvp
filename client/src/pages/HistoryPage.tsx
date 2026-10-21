@@ -7,8 +7,11 @@ import { HexagramDisplay } from '@/components/HexagramLine';
 import { cn } from '@/lib/utils';
 import { SafeMarkdown } from '@/components/SafeMarkdown';
 import { lookupHexagram } from '@/hooks/useHexagramData';
+import { useI18n } from '@/i18n/I18nContext';
+import { localizeHexagram, localizedHexagramName } from '@/i18n/hexagrams';
 
 export default function HistoryPage() {
+  const { locale, t } = useI18n();
   const [, navigate] = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [verifiedNames, setVerifiedNames] = useState<Record<string, {
@@ -17,7 +20,7 @@ export default function HistoryPage() {
   }>>({});
 
   // 匿名版本只读取当前浏览器的 localStorage；刷新或重新打开页面后仍可恢复。
-  const readings = useMemo<LocalReading[]>(() => getLocalReadings(), []);
+  const readings = useMemo<LocalReading[]>(() => getLocalReadings().filter(item => (item.locale ?? 'zh-CN') === locale), [locale]);
 
   const selectedItem = useMemo(() => {
     if (!selectedId) return null;
@@ -34,8 +37,8 @@ export default function HistoryPage() {
         ? await lookupHexagram(hexResult.changedBits)
         : null;
       return [item.id, {
-        original: original?.name ?? '卦象记录',
-        changed: changed?.name ?? null,
+        original: localizeHexagram(original, locale)?.name ?? t('hexagramRecord'),
+        changed: localizeHexagram(changed, locale)?.name ?? null,
       }] as const;
     })).then(entries => {
       if (cancelled) return;
@@ -46,12 +49,12 @@ export default function HistoryPage() {
       setVerifiedNames(next);
     });
     return () => { cancelled = true; };
-  }, [readings]);
+  }, [readings, locale]);
 
   const formatDate = (value: string) => {
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '时间未知';
-    return date.toLocaleDateString('zh-CN', {
+    if (Number.isNaN(date.getTime())) return t('unknownTime');
+    return date.toLocaleDateString(locale, {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   };
@@ -73,21 +76,21 @@ export default function HistoryPage() {
           onClick={() => navigate('/')}
           className="text-stone-400 hover:text-stone-600 text-sm transition-colors"
         >
-          ← 返回
+          {t('back')}
         </button>
-        <h1 className="text-lg font-medium text-stone-700 tracking-wide">占卜历史</h1>
-        <span className="ml-auto text-xs text-stone-400">仅保存在本浏览器</span>
+        <h1 className="text-lg font-medium text-stone-700 tracking-wide">{t('historyTitle')}</h1>
+        <span className="ml-auto text-xs text-stone-400">{t('localOnly')}</span>
       </div>
 
       {readings.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-4">📜</div>
-          <p className="text-stone-400 text-sm">暂无占卜记录</p>
+          <p className="text-stone-400 text-sm">{t('noHistory')}</p>
           <button
             onClick={() => navigate('/')}
             className="mt-4 text-amber-600 text-sm hover:text-amber-800 transition-colors"
           >
-            开始第一次占卜 →
+            {t('startFirst')}
           </button>
         </div>
       ) : (
@@ -118,7 +121,7 @@ export default function HistoryPage() {
                         size="sm"
                       />
                     ) : (
-                      <div className="h-16 flex items-center justify-center text-xs text-stone-400">卦象缺失</div>
+                      <div className="h-16 flex items-center justify-center text-xs text-stone-400">{t('missingHexagram')}</div>
                     )}
                   </div>
 
@@ -126,19 +129,19 @@ export default function HistoryPage() {
                     <p className="text-stone-700 text-sm font-medium truncate mb-1">{item.question}</p>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                        {verified?.original ?? (isLegacyCasting ? '历史排盘待校验' : item.originalName)}
+                        {verified?.original ?? (isLegacyCasting ? t('legacyUnverified') : localizedHexagramName(item.originalKey, item.originalName, locale))}
                       </span>
                       {(verified?.changed ?? (!isLegacyCasting ? item.changedName : null)) && (
                         <>
                           <span className="text-xs text-stone-400">→</span>
                           <span className="text-xs text-stone-600 bg-stone-50 px-2 py-0.5 rounded-full border border-stone-200">
-                            {verified?.changed ?? item.changedName}
+                            {verified?.changed ?? (item.changedName ? localizedHexagramName(item.changedKey ?? '', item.changedName, locale) : null)}
                           </span>
                         </>
                       )}
                       {hexResult && hexResult.movingLines.length > 0 && (
                         <span className="text-xs text-amber-500">
-                          {hexResult.movingLines.map(position => ['初', '二', '三', '四', '五', '上'][position - 1] + '爻').join(' ')} 动
+                          {hexResult.movingLines.map(position => [t('lineInitial'), t('lineSecond'), t('lineThird'), t('lineFourth'), t('lineFifth'), t('lineTop')][position - 1]).join(', ')}
                         </span>
                       )}
                     </div>
@@ -157,12 +160,12 @@ export default function HistoryPage() {
                   <div className="border-t border-amber-100 px-4 py-4 space-y-4 bg-amber-50/30">
                     {isLegacyCasting && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-relaxed text-amber-900">
-                        此记录生成于排盘顺序修复前。上方卦名已按六次投掷重新核对，但旧 AI 解读可能引用了错误卦名，因此不再展示；建议使用相同问题重新起卦。
+                        {t('legacyWarning')}
                       </div>
                     )}
                     {!isLegacyCasting && selectedItem.integratedReading && (
                       <div>
-                        <h4 className="text-xs font-medium text-amber-700 mb-2">综合解读</h4>
+                        <h4 className="text-xs font-medium text-amber-700 mb-2">{t('integratedReading')}</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
                           <SafeMarkdown>{selectedItem.integratedReading}</SafeMarkdown>
                         </div>
@@ -170,7 +173,7 @@ export default function HistoryPage() {
                     )}
                     {!isLegacyCasting && selectedItem.hexagramReading && (
                       <div>
-                        <h4 className="text-xs font-medium text-amber-700 mb-2">卦象解读</h4>
+                        <h4 className="text-xs font-medium text-amber-700 mb-2">{t('hexagramReading')}</h4>
                         <div className="text-sm text-stone-600 leading-relaxed prose prose-stone prose-sm max-w-none">
                           <SafeMarkdown>{selectedItem.hexagramReading}</SafeMarkdown>
                         </div>
@@ -183,7 +186,7 @@ export default function HistoryPage() {
                       }}
                       className="text-xs text-amber-600 hover:text-amber-800 transition-colors"
                     >
-                      重新占卜 →
+                      {t('divineAgain')}
                     </button>
                   </div>
                 )}
@@ -194,7 +197,7 @@ export default function HistoryPage() {
       )}
 
       <p className="text-center text-stone-400 text-xs mt-8">
-        本结果仅供文化研究与娱乐参考，请合理看待
+        {t('culturalDisclaimer')}
       </p>
     </div>
   );

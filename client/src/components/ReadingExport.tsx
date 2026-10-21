@@ -3,6 +3,7 @@ import { toBlob } from 'html-to-image';
 import { Download } from 'lucide-react';
 import { FANG_SONG } from '@/components/ScrollUI';
 import { calculateExportPixelRatio } from '@/lib/exportImage';
+import { useI18n } from '@/i18n/I18nContext';
 
 type ExportStatus = 'idle' | 'generating' | 'downloaded' | 'error';
 
@@ -19,16 +20,16 @@ function downloadBlob(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function getStatusText(status: ExportStatus, errorMessage: string | null) {
+function getStatusText(status: ExportStatus, errorMessage: string | null, t: ReturnType<typeof useI18n>['t']) {
   switch (status) {
-    case 'generating': return '正在生成长图，请稍候…';
-    case 'downloaded': return 'PNG 已开始下载';
-    case 'error': return errorMessage ?? '长图生成失败，请稍后重试';
+    case 'generating': return t('imageGenerating');
+    case 'downloaded': return t('imageDownloaded');
+    case 'error': return errorMessage ?? t('imageFailed');
     default: return null;
   }
 }
 
-async function createReadingImage(target: HTMLElement) {
+async function createReadingImage(target: HTMLElement, errors: { notReady: string; browserFailed: string }) {
   // 不等待 document.fonts.ready：Google Fonts 在部分网络会长时间 pending，
   // 过去会让“保存长图”看起来完全没反应。导出使用当前可用字体并跳过
   // 跨域字体嵌入，系统宋体会作为稳定兜底。
@@ -36,7 +37,7 @@ async function createReadingImage(target: HTMLElement) {
   await Promise.all(images.map(image => image.decode?.().catch(() => undefined)));
 
   const { width, height } = target.getBoundingClientRect();
-  if (width < 1 || height < 1) throw new Error('导出内容尚未准备完成');
+  if (width < 1 || height < 1) throw new Error(errors.notReady);
   const pixelRatio = calculateExportPixelRatio(width, height);
   const blob = await toBlob(target, {
     width: Math.ceil(width),
@@ -52,7 +53,7 @@ async function createReadingImage(target: HTMLElement) {
     },
     filter: node => !(node instanceof HTMLElement && node.dataset.exportIgnore === 'true'),
   });
-  if (!blob) throw new Error('浏览器未能生成图片');
+  if (!blob) throw new Error(errors.browserFailed);
   return blob;
 }
 
@@ -70,6 +71,7 @@ export function ReadingExportActions({
   filePrefix,
   disabled = false,
 }: ReadingExportActionsProps) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<ExportStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -80,7 +82,7 @@ export function ReadingExportActions({
 
   const failGeneration = (error: unknown) => {
     console.error('[ReadingExport] failed:', error);
-    setErrorMessage(error instanceof Error ? error.message : '长图生成失败，请稍后重试');
+    setErrorMessage(error instanceof Error ? error.message : t('imageFailed'));
     setStatus('error');
   };
 
@@ -91,7 +93,7 @@ export function ReadingExportActions({
     const fileName = `${filePrefix}-${new Date().toISOString().slice(0, 10)}.png`;
     beginGeneration();
     try {
-      const blob = await createReadingImage(target);
+      const blob = await createReadingImage(target, { notReady: t('imageNotReady'), browserFailed: t('imageBrowserFailed') });
       downloadBlob(blob, fileName);
       setStatus('downloaded');
     } catch (error) {
@@ -99,7 +101,7 @@ export function ReadingExportActions({
     }
   };
 
-  const statusText = getStatusText(status, errorMessage);
+  const statusText = getStatusText(status, errorMessage, t);
 
   return (
     <div
@@ -127,7 +129,7 @@ export function ReadingExportActions({
         }}
       >
         <Download size={15} className={status === 'generating' ? 'animate-pulse' : ''} />
-        {status === 'generating' ? '生成中' : '保存长图'}
+        {status === 'generating' ? t('generatingImage') : t('saveImage')}
       </button>
     </div>
   );

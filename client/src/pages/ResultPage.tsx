@@ -15,10 +15,13 @@ import { addLocalReading } from '@/hooks/useLocalHistory';
 import { ReadingExportActions } from '@/components/ReadingExport';
 import { SupportAuthor } from '@/components/SupportAuthor';
 import { TurnstileChallenge } from '@/components/TurnstileChallenge';
+import { useI18n } from '@/i18n/I18nContext';
+import { localizeHexagram } from '@/i18n/hexagrams';
 
 type TabType = 'integrated' | 'hexagram';
 
 export default function ResultPage() {
+  const { locale, t } = useI18n();
   const [, navigate] = useLocation();
   const { state, setOriginalHexagram, setChangedHexagram, setOriginalText, setChangedText,
     setIntegratedReading, setHexagramReading, setIsLoadingReading, setSavedReadingId } = useDivination();
@@ -33,6 +36,22 @@ export default function ResultPage() {
   const streamAbortRef = useRef<AbortController | null>(null);
   const integratedBufferRef = useRef('');
   const hexagramBufferRef = useRef('');
+  const previousLocaleRef = useRef(locale);
+
+  useEffect(() => {
+    if (previousLocaleRef.current === locale) return;
+    previousLocaleRef.current = locale;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    requestStartedRef.current = false;
+    integratedBufferRef.current = '';
+    hexagramBufferRef.current = '';
+    setIntegratedReading('');
+    setHexagramReading('');
+    setIsLoadingReading(false);
+    setStreamError(undefined);
+    setTurnstileError(undefined);
+  }, [locale, setHexagramReading, setIntegratedReading, setIsLoadingReading]);
   useEffect(() => {
     if (!state.hexagramResult) navigate('/');
   }, [state.hexagramResult, navigate]);
@@ -70,6 +89,7 @@ export default function ResultPage() {
       streamAbortRef.current = controller;
 
       void streamReading({
+        locale,
         question: state.question,
         originalKey: originalHexagram.key,
         originalName: originalHexagram.name,
@@ -112,6 +132,7 @@ export default function ResultPage() {
 
         // 匿名版本始终保存到当前浏览器，避免 OAuth 或服务端历史成为使用前提。
         addLocalReading({
+          locale,
           question: state.question,
           linesJson: JSON.stringify(hexResult.lines),
           originalKey: originalHexagram.key,
@@ -134,7 +155,7 @@ export default function ResultPage() {
           setTurnstileError(error.code === 'TURNSTILE_FAILED' ? error.message : undefined);
           return;
         }
-        const message = error instanceof Error ? error.message : '解读生成失败，请稍后重试。';
+        const message = error instanceof Error ? error.message : t('readingFailed');
         setStreamError(message);
         console.error('[Reading] stream error:', message);
       }).finally(() => {
@@ -142,7 +163,7 @@ export default function ResultPage() {
         if (streamAbortRef.current === controller) streamAbortRef.current = null;
       });
     }
-  }, [hexLoading, originalHexagram, originalText, changedHexagram, hexResult, turnstileToken]);
+  }, [hexLoading, originalHexagram, originalText, changedHexagram, hexResult, turnstileToken, locale]);
 
   useEffect(() => () => {
     streamAbortRef.current?.abort();
@@ -152,6 +173,8 @@ export default function ResultPage() {
   if (!hexResult) return null;
 
   const isLoading = hexLoading || state.isLoadingReading;
+  const displayOriginal = localizeHexagram(originalHexagram, locale);
+  const displayChanged = localizeHexagram(changedHexagram, locale);
 
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--bg-paper, #faf6ed)' }}>
@@ -163,9 +186,9 @@ export default function ResultPage() {
       {/* 背景大字 */}
       <div className="fixed inset-0 pointer-events-none select-none overflow-hidden">
         <span className="absolute top-4 left-4 text-[8rem] leading-none text-amber-900/[0.04]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>卦</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '卦' : 'I'}</span>
         <span className="absolute bottom-4 right-4 text-[6rem] leading-none text-amber-900/[0.03]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>象</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '象' : 'Ching'}</span>
       </div>
 
       {/* 主内容 */}
@@ -190,12 +213,12 @@ export default function ResultPage() {
                 className="text-amber-700/55 hover:text-amber-700/80 text-[0.78rem] tracking-[0.15em] transition-colors"
                 style={{ fontFamily: FANG_SONG }}
               >
-                ← 重新占卜
+                {t('restart')}
               </button>
               <div className="inline-flex items-center gap-2">
                 <WaveLine />
                 <span className="text-amber-700/50 text-[0.72rem] tracking-[0.35em]" style={{ fontFamily: FANG_SONG }}>
-                  卦 象 解 读
+                  {t('readingTitle')}
                 </span>
                 <WaveLine flip />
               </div>
@@ -204,15 +227,15 @@ export default function ResultPage() {
                 className="text-amber-600/60 hover:text-amber-700/80 text-[0.78rem] tracking-[0.1em] transition-colors"
                 style={{ fontFamily: FANG_SONG }}
               >
-                往卦 →
+                {t('history')}
               </button>
             </div>
 
             {/* 古风 Tab */}
             <AncientTabs
               tabs={[
-                { key: 'integrated', label: '综合解读' },
-                { key: 'hexagram', label: '卦象解读' },
+                { key: 'integrated', label: t('integratedReading') },
+                { key: 'hexagram', label: t('hexagramReading') },
               ]}
               active={activeTab}
               onChange={k => setActiveTab(k as TabType)}
@@ -234,7 +257,7 @@ export default function ResultPage() {
             }}
           >
             <p className="text-[0.7rem] text-amber-700/55 mb-1 tracking-[0.25em]" style={{ fontFamily: FANG_SONG }}>
-              所问之事
+              {t('questionAsked')}
             </p>
             <p className="text-stone-700 text-[0.88rem] leading-relaxed tracking-wide" style={{ fontFamily: FANG_SONG }}>
               {state.question}
@@ -243,13 +266,13 @@ export default function ResultPage() {
 
           {/* 卦象信息卡 */}
           <ScrollCard>
-            <ScrollDivider label="本卦与变卦" />
+            <ScrollDivider label={t('originalAndChanged')} />
             <div className="mt-4">
               <div className="flex gap-6 items-start">
                 {/* 本卦 */}
                 <div className="flex-1">
                   <div className="text-xs text-stone-400/70 mb-2 text-center tracking-widest" style={{ fontFamily: FANG_SONG }}>
-                    本卦
+                    {t('originalHexagram')}
                   </div>
                   {hexLoading ? (
                     <div className="h-32 flex items-center justify-center">
@@ -260,11 +283,11 @@ export default function ResultPage() {
                       <HexagramDisplay lines={hexResult.lines} movingLines={hexResult.movingLines} size="md" />
                       <div className="text-center mt-2">
                         <span className="text-stone-700 text-sm tracking-widest" style={{ fontFamily: SONG }}>
-                          {originalHexagram?.name ?? '—'}
+                          {displayOriginal?.name ?? t('noReading')}
                         </span>
                         {originalHexagram && (
                           <div className="text-xs text-stone-400/65 mt-0.5 tracking-wide" style={{ fontFamily: FANG_SONG }}>
-                            {originalHexagram.upper}上{originalHexagram.lower}下
+                            {t('aboveBelow', { upper: displayOriginal?.upper ?? '', lower: displayOriginal?.lower ?? '' })}
                           </div>
                         )}
                       </div>
@@ -277,11 +300,11 @@ export default function ResultPage() {
                   <>
                     <div className="flex flex-col items-center justify-center pt-8">
                       <div className="text-amber-600/60 text-base" style={{ fontFamily: FANG_SONG }}>→</div>
-                      <div className="text-xs text-stone-400/50 mt-1 tracking-widest" style={{ fontFamily: FANG_SONG }}>变</div>
+                      <div className="text-xs text-stone-400/50 mt-1 tracking-widest" style={{ fontFamily: FANG_SONG }}>{t('change')}</div>
                     </div>
                     <div className="flex-1">
                       <div className="text-xs text-stone-400/70 mb-2 text-center tracking-widest" style={{ fontFamily: FANG_SONG }}>
-                        变卦
+                        {t('changedHexagram')}
                       </div>
                       {hexLoading ? (
                         <div className="h-32 flex items-center justify-center">
@@ -296,11 +319,11 @@ export default function ResultPage() {
                           />
                           <div className="text-center mt-2">
                             <span className="text-stone-700 text-sm tracking-widest" style={{ fontFamily: SONG }}>
-                              {changedHexagram?.name ?? '—'}
+                              {displayChanged?.name ?? t('noReading')}
                             </span>
                             {changedHexagram && (
                               <div className="text-xs text-stone-400/65 mt-0.5 tracking-wide" style={{ fontFamily: FANG_SONG }}>
-                                {changedHexagram.upper}上{changedHexagram.lower}下
+                                {t('aboveBelow', { upper: displayChanged?.upper ?? '', lower: displayChanged?.lower ?? '' })}
                               </div>
                             )}
                           </div>
@@ -315,7 +338,7 @@ export default function ResultPage() {
               {hexResult.movingLines.length > 0 && (
                 <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(175,135,55,0.12)' }}>
                   <span className="text-xs text-stone-400/60 tracking-widest" style={{ fontFamily: FANG_SONG }}>
-                    动爻：
+                    {t('movingLines')}
                   </span>
                   {hexResult.movingLines.map(pos => (
                     <span
@@ -328,7 +351,7 @@ export default function ResultPage() {
                         border: '1px solid rgba(175,120,35,0.25)',
                       }}
                     >
-                      {['初', '二', '三', '四', '五', '上'][pos - 1]}爻
+                      {[t('lineInitial'), t('lineSecond'), t('lineThird'), t('lineFourth'), t('lineFifth'), t('lineTop')][pos - 1]}
                     </span>
                   ))}
                 </div>
@@ -366,6 +389,7 @@ export default function ResultPage() {
               isLoading={isLoading}
               error={streamError}
               exportTargetRef={exportTargetRef}
+              locale={locale}
             />
           )}
           </div>
@@ -413,9 +437,10 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
   error?: string;
   exportTargetRef: RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useI18n();
   return (
     <ScrollCard>
-      <ScrollDivider label="综合解读" />
+      <ScrollDivider label={t('integratedReading')} />
       <div className="mt-4 min-h-[160px]">
         {reading ? (
           <>
@@ -424,7 +449,7 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
               style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
             >
               <SafeMarkdown>{reading}</SafeMarkdown>
-              {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
+              {isLoading && <span className="streaming-caret" aria-label={t('continuingGeneration')} />}
             </div>
             {error && <PartialReadingWarning error={error} />}
           </>
@@ -433,11 +458,11 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
             <div className="text-2xl">{error.includes('次数已达上限') ? '☄' : '✶'}</div>
             <div className="text-sm tracking-wide" style={{ color: '#8b5a2b' }}>{error}</div>
           </div>
-        ) : isLoading ? <AncientLoading text="正在起卦解读…" /> : null}
+        ) : isLoading ? <AncientLoading text={t('generatingIntegrated')} /> : null}
       </div>
       <ReadingExportActions
         targetRef={exportTargetRef}
-        filePrefix="众见六爻-综合解读"
+        filePrefix={t('exportIntegratedPrefix')}
         disabled={!reading || isLoading || Boolean(error)}
       />
     </ScrollCard>
@@ -445,7 +470,7 @@ function IntegratedTab({ reading, isLoading, error, exportTargetRef }: {
 }
 
 // ─── 卦象解读 Tab ──────────────────────────────────────────────
-function HexagramTab({ reading, originalText, changedText, movingLines, isLoading, error, exportTargetRef }: {
+function HexagramTab({ reading, originalText, changedText, movingLines, isLoading, error, exportTargetRef, locale }: {
   reading: string;
   originalText: any;
   changedText: any;
@@ -453,12 +478,14 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
   isLoading: boolean;
   error?: string;
   exportTargetRef: RefObject<HTMLDivElement | null>;
+  locale: 'zh-CN' | 'en-US';
 }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       {/* LLM 卦象解读 */}
       <ScrollCard>
-        <ScrollDivider label="卦象解读" />
+        <ScrollDivider label={t('hexagramReading')} />
         <div className="mt-4 min-h-[160px]">
           {reading ? (
             <>
@@ -467,7 +494,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
                 style={{ fontFamily: FANG_SONG, fontSize: '0.9rem', color: '#3d2e1a' }}
               >
                 <SafeMarkdown>{reading}</SafeMarkdown>
-                {isLoading && <span className="streaming-caret" aria-label="正在继续生成" />}
+                {isLoading && <span className="streaming-caret" aria-label={t('continuingGeneration')} />}
               </div>
               {error && <PartialReadingWarning error={error} />}
             </>
@@ -476,30 +503,30 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
               <div className="text-2xl">{error.includes('次数已达上限') ? '☄' : '✶'}</div>
               <div className="text-sm tracking-wide" style={{ color: '#8b5a2b' }}>{error}</div>
             </div>
-          ) : isLoading ? <AncientLoading text="正在生成卦象解读…" /> : null}
+          ) : isLoading ? <AncientLoading text={t('generatingHexagram')} /> : null}
         </div>
         <ReadingExportActions
           targetRef={exportTargetRef}
-          filePrefix="众见六爻-卦象解读"
+          filePrefix={t('exportHexagramPrefix')}
           disabled={!reading || isLoading || Boolean(error)}
         />
       </ScrollCard>
 
       {/* 经文原文 */}
-      {originalText && (
+      {originalText && locale === 'zh-CN' && (
         <div data-export-ignore="true">
           <ScrollCard>
-            <ScrollDivider label={`《${originalText.name}》原文`} />
+            <ScrollDivider label={t('classicOriginal', { name: originalText.name })} />
             <div className="mt-4 space-y-4">
-              <ClassicSection label="卦辞" content={originalText.gua_ci} />
-              <ClassicSection label="象曰" content={originalText.xiang_yue} />
+              <ClassicSection label={t('guaCi')} content={originalText.gua_ci} />
+              <ClassicSection label={t('xiangYue')} content={originalText.xiang_yue} />
               {movingLines.length > 0 && (
                 <div>
                   <span
                     className="text-xs tracking-widest"
                     style={{ fontFamily: FANG_SONG, color: 'rgba(160,100,35,0.8)' }}
                   >
-                    动爻爻辞
+                    {t('movingLineText')}
                   </span>
                   <div
                     className="mt-1 h-px"
@@ -509,7 +536,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
                     {movingLines.map(pos => (
                       <p key={pos} className="leading-relaxed" style={{ fontFamily: FANG_SONG, fontSize: '0.88rem', color: '#4a3520' }}>
                         <span style={{ color: 'rgba(160,100,35,0.9)' }}>
-                          {['初', '二', '三', '四', '五', '上'][pos - 1]}爻：
+                          {[t('lineInitial'), t('lineSecond'), t('lineThird'), t('lineFourth'), t('lineFifth'), t('lineTop')][pos - 1]}：
                         </span>
                         {originalText.yao_ci[String(pos)]}
                       </p>
@@ -526,6 +553,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
 }
 
 function PartialReadingWarning({ error }: { error: string }) {
+  const { t } = useI18n();
   return (
     <div
       className="mt-5 px-3 py-2 text-xs leading-relaxed tracking-wide"
@@ -536,7 +564,7 @@ function PartialReadingWarning({ error }: { error: string }) {
         border: '1px solid rgba(175,120,35,0.2)',
       }}
     >
-      以上为中断前已生成的内容。{error}
+      {t('interruptedReading', { error })}
     </div>
   );
 }

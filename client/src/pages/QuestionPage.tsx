@@ -7,17 +7,12 @@ import {
   ScrollCard, ScrollDivider, WaveLine, SealButton, Disclaimer,
 } from '@/components/ScrollUI';
 import { trackEvent } from '@/lib/analytics';
+import { useI18n } from '@/i18n/I18nContext';
 
 const IS_DEV = import.meta.env.DEV;
 
-const EXAMPLE_QUESTIONS = [
-  '此次求职能否顺利？',
-  '近期感情运势如何？',
-  '这笔投资是否值得？',
-  '家人的病情会好转吗？',
-];
-
 export default function QuestionPage() {
+  const { locale, t } = useI18n();
   const [, navigate] = useLocation();
   const { state, setQuestion, reset, setHexagramResult } = useDivination();
   const [localQ, setLocalQ] = useState(state.question);
@@ -27,8 +22,8 @@ export default function QuestionPage() {
 
   const handleStart = () => {
     const q = localQ.trim();
-    if (!q) { setError('请先输入您的占卜问题'); return; }
-    if (q.length < 4) { setError('问题至少需要四字'); return; }
+    if (!q) { setError(t('questionRequired')); return; }
+    if (q.length < 4) { setError(t('questionTooShort')); return; }
     reset();
     setQuestion(q);
     trackEvent('question_submitted', '/');
@@ -65,18 +60,18 @@ export default function QuestionPage() {
       {/* 大字背景装饰 */}
       <div className="absolute inset-0 pointer-events-none select-none">
         <span className="absolute top-4 left-4 text-[9rem] leading-none text-amber-900/[0.05]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>易</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '易' : 'I'}</span>
         <span className="absolute bottom-4 right-4 text-[7rem] leading-none text-amber-900/[0.035]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>卦</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '卦' : 'Ching'}</span>
         {/* 左侧竖排文字 */}
         <div className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-800/[0.06] text-[0.78rem]"
           style={{ writingMode: 'vertical-rl', fontFamily: FANG_SONG, letterSpacing: '0.6em', lineHeight: 1 }}>
-          天地玄黄宇宙洪荒
+          {locale === 'zh-CN' ? '天地玄黄宇宙洪荒' : 'HEAVEN EARTH CHANGE'}
         </div>
         {/* 右侧竖排文字 */}
         <div className="absolute right-5 top-1/2 -translate-y-1/2 text-amber-800/[0.06] text-[0.78rem]"
           style={{ writingMode: 'vertical-rl', fontFamily: FANG_SONG, letterSpacing: '0.6em', lineHeight: 1 }}>
-          日月盈昃辰宿列张
+          {locale === 'zh-CN' ? '日月盈昃辰宿列张' : 'SUN MOON BALANCE'}
         </div>
       </div>
 
@@ -87,30 +82,30 @@ export default function QuestionPage() {
           <div className="inline-flex items-center gap-3 mb-4">
             <WaveLine />
             <span className="text-amber-700/60 text-[0.78rem] tracking-[0.4em]" style={{ fontFamily: FANG_SONG }}>
-              众见六爻
+              {t('siteName')}
             </span>
             <WaveLine flip />
           </div>
           <h1 className="text-[3.2rem] font-medium text-stone-800 tracking-[0.22em] mb-3"
             style={{ fontFamily: SONG, fontWeight: 500 }}>
-            心诚则灵
+            {t('homeMotto')}
           </h1>
           <p className="text-stone-500/75 text-[0.88rem] leading-[2.1] tracking-[0.15em]"
             style={{ fontFamily: FANG_SONG }}>
-            静心凝神，将您的问题化为文字<br />
-            天地自有感应，卦象自然呈现
+            {t('homeIntroLine1')}<br />
+            {t('homeIntroLine2')}
           </p>
         </div>
 
         {/* 书卷卡片 */}
         <ScrollCard>
-          <ScrollDivider label="问 卦" />
+          <ScrollDivider label={t('askTitle')} />
           <div className="mt-4">
 
             {/* 问题标签 */}
             <label className="block text-stone-600/80 text-[0.82rem] mb-2.5 tracking-[0.2em]"
               style={{ fontFamily: FANG_SONG }}>
-              ◈ 您的占卜问题
+              {t('questionLabel')}
             </label>
 
             {/* 文本输入区 */}
@@ -120,7 +115,7 @@ export default function QuestionPage() {
               onChange={handleInput}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              placeholder="请将心中所问，化为文字……"
+              placeholder={t('questionPlaceholder')}
               maxLength={200}
               rows={4}
               onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleStart(); }}
@@ -145,7 +140,7 @@ export default function QuestionPage() {
             <div className="flex justify-between items-center mt-1.5 px-0.5">
               <span className={`text-xs tracking-wide ${error ? 'text-red-500/75' : 'text-stone-400/55'}`}
                 style={{ fontFamily: FANG_SONG }}>
-                {error ? `✦ ${error}` : 'Ctrl+Enter 快速开始'}
+                {error ? `✦ ${error}` : ''}
               </span>
               <span className="text-stone-400/45 text-xs">{localQ.length}/200</span>
             </div>
@@ -155,12 +150,12 @@ export default function QuestionPage() {
               <div className="flex items-center gap-2 mb-2.5">
                 <div className="h-px flex-1" style={{ background: 'rgba(175,130,50,0.1)' }} />
                 <p className="text-stone-400/60 text-[0.72rem] tracking-[0.28em]" style={{ fontFamily: FANG_SONG }}>
-                  示例问题
+                  {t('examples')}
                 </p>
                 <div className="h-px flex-1" style={{ background: 'rgba(175,130,50,0.1)' }} />
               </div>
               <div className="flex flex-wrap gap-2">
-                {EXAMPLE_QUESTIONS.map(q => (
+                {[t('exampleJob'), t('exampleLove'), t('exampleInvestment'), t('exampleHealth')].map(q => (
                   <button
                     key={q}
                     onClick={() => handleExample(q)}
@@ -196,7 +191,7 @@ export default function QuestionPage() {
 
             {/* 开始按钮 */}
             <SealButton onClick={handleStart} className="mt-1">
-              <span>开 始 占 卜</span>
+              <span>{t('startDivination')}</span>
             </SealButton>
           </div>
         </ScrollCard>
@@ -209,7 +204,7 @@ export default function QuestionPage() {
             className="text-amber-700/45 text-[0.72rem] tracking-[0.2em] hover:text-amber-700/70 transition-colors"
             style={{ fontFamily: FANG_SONG }}
           >
-            查阅往卦 →
+            {t('browseHistory')}
           </button>
         </div>
 
