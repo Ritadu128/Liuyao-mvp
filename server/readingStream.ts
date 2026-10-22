@@ -173,7 +173,9 @@ export async function streamDeepSeekReading({
       body: JSON.stringify({
         model,
         messages,
-        temperature: 0.7,
+        // 解读需要稳定地紧扣用户原问题；较低随机度可减少把古代爻辞
+        // 生搬硬套成无关人物关系或故事的情况。
+        temperature: 0.35,
         // 两段中文解读加上 JSON 转义经常超过 2K tokens；被 length 截断后
         // 浏览器会先看到正文，随后又因最终 JSON 不完整而失败。
         max_tokens: 4_096,

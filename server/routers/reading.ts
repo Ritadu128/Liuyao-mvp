@@ -18,6 +18,7 @@ import {
   type ReadingSection,
   type StreamedReading,
 } from '../readingStream';
+import { getReadingRelevanceRules } from '../readingPromptRules';
 import {
   createAiRequestLog,
   estimateDeepSeekCostMicros,
@@ -306,6 +307,7 @@ function buildPrompt(input: GenerateInput): string {
   const languageRule = english
     ? 'Output every user-visible word in natural English. Do not output Chinese characters. Treat the Chinese source text below as internal source material: translate its meaning into English instead of quoting it in Chinese.'
     : '全部内容必须使用简体中文，文白相间，既有古典韵味又通俗易懂。';
+  const relevanceRules = getReadingRelevanceRules(input.locale);
   const movingDesc = input.movingLines.length > 0
     ? `动爻：${input.movingLines.map(position => LINE_POSITION_LABELS[position - 1] + '爻').join('、')}`
     : '无动爻（纯卦）';
@@ -346,6 +348,9 @@ ${english ? 'Explain the source meaning, apply it to the question in modern lang
 
 【综合解读要求】
 使用 Markdown 格式，用 ## 标题分节（如：## 卦象总论、## 动爻分析、## 综合建议），关键词或核心建议用 **加粗** 标注。
+
+【问题相关性要求】
+${relevanceRules}
 
 【通用要求】
 1. 语言：${languageRule}
@@ -612,8 +617,8 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
             {
               role: 'system',
               content: locale === 'en-US'
-                ? 'You are a careful I Ching cultural interpreter. Use only the supplied source material. Return every user-visible word in natural English and never output Chinese characters.'
-                : '你是精通《周易》六爻占卜的易学大师，擅长将古典易理与现代生活相结合，提供深刻而实用的占卜解读。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。全部输出使用简体中文。',
+                ? 'You are a rigorous I Ching cultural interpreter. First understand and directly answer the user\'s exact question, then explain the answer from the supplied hexagram and source text. Never change the subject of the question or invent a person, relationship, motive, event, or certainty. Do not map ancient characters or situations literally onto an unrelated modern question. Use only the supplied source material. Return every user-visible word in natural English and never output Chinese characters.'
+                : '你是严谨的《周易》文化解读者。首要任务是准确理解并直接回应用户原问题，再以已提供的卦象和经文说明理由。不得擅自改变问题对象，不得猜测未说明的人物身份、关系、动机或事件；古代经文情境不得生搬硬套到现代问题。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。全部输出使用简体中文。',
             },
             { role: 'user', content: buildPrompt(readingInput) },
           ],
