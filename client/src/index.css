@@ -302,6 +302,17 @@
   margin-bottom: 0;
 }
 
+/* Chinese display spacing is too wide for English words. Keep the same typeface,
+   but use normal English tracking throughout the public reading flow. */
+html[lang="en-US"] [class*="tracking-"],
+html[lang="en-US"] [style*="letter-spacing"],
+html[lang="en-US"] .ancient-reading-content h1,
+html[lang="en-US"] .ancient-reading-content h2,
+html[lang="en-US"] .ancient-reading-content h3,
+html[lang="en-US"] .ancient-reading-content h4 {
+  letter-spacing: 0.015em !important;
+}
+
 /* ─── 解读分节标题（## / ###）─────────────────────────────── */
 .ancient-reading-content h1,
 .ancient-reading-content h2,

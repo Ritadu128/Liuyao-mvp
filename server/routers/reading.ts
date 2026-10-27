@@ -217,7 +217,7 @@ const YaoCiSchema = z.object({
 });
 
 const GenerateInputSchema = z.object({
-  locale: z.enum(['zh-CN', 'en-US']).default('zh-CN'),
+  locale: z.enum(['zh-CN', 'zh-TW', 'en-US']).default('zh-CN'),
   question: z.string().trim().min(1).max(200),
   originalKey: HexagramKeySchema,
   originalName: HexagramNameSchema,
@@ -241,8 +241,8 @@ const ReadingStreamInputSchema = GenerateInputSchema.extend({
 
 type GenerateInput = z.infer<typeof GenerateInputSchema>;
 
-function localized(locale: GenerateInput['locale'], zh: string, en: string) {
-  return locale === 'en-US' ? en : zh;
+function localized(locale: GenerateInput['locale'], zh: string, en: string, tw: string) {
+  return locale === 'en-US' ? en : locale === 'zh-TW' ? tw : zh;
 }
 
 function containsCjk(value: string) {
@@ -303,10 +303,14 @@ function buildPrompt(input: GenerateInput): string {
   const english = input.locale === 'en-US';
   const sectionHeadings = english
     ? '## 1. Classical meaning and interpretation\n## 2. Modern interpretation\n## 3. Story and metaphor'
-    : '## 一、经文原文与释义\n## 二、现代解读\n## 三、故事化解读';
+    : input.locale === 'zh-TW'
+      ? '## 一、經文原文與釋義\n## 二、現代解讀\n## 三、故事化解讀'
+      : '## 一、经文原文与释义\n## 二、现代解读\n## 三、故事化解读';
   const languageRule = english
     ? 'Output every user-visible word in natural English. Do not output Chinese characters. Treat the Chinese source text below as internal source material: translate its meaning into English instead of quoting it in Chinese.'
-    : '全部内容必须使用简体中文，文白相间，既有古典韵味又通俗易懂。';
+    : input.locale === 'zh-TW'
+      ? '全部使用繁體中文（台灣常用字詞），不可混入簡體字。下方簡體經文僅作為資料來源；引用時也需轉成繁體字。文白相間，通俗易懂。'
+      : '全部内容必须使用简体中文，文白相间，既有古典韵味又通俗易懂。';
   const relevanceRules = getReadingRelevanceRules(input.locale);
   const movingDesc = input.movingLines.length > 0
     ? `动爻：${input.movingLines.map(position => LINE_POSITION_LABELS[position - 1] + '爻').join('、')}`
@@ -338,8 +342,8 @@ ${yaoCiBlock}
 
 请提供两部分解读，严格按照以下 JSON 格式返回：
 {
-  "integrated_reading": "${english ? 'Overview in Markdown, about 500-800 English words' : '综合解读内容（使用 Markdown，400-600字）'}",
-  "hexagram_reading": "${english ? 'Detailed reading in Markdown with all three required sections, about 500-800 English words' : '卦象解读内容（使用 Markdown，必须包含以下三个章节，每章节用 ## 标题标注，共约400-500字）'}"
+  "integrated_reading": "${english ? 'Overview in Markdown, about 500-800 English words' : input.locale === 'zh-TW' ? '綜合解讀內容（使用 Markdown，約400–600字）' : '综合解读内容（使用 Markdown，400-600字）'}",
+  "hexagram_reading": "${english ? 'Detailed reading in Markdown with all three required sections, about 500-800 English words' : input.locale === 'zh-TW' ? '卦象解讀內容（使用 Markdown，包含以下三個章節，約400–500字）' : '卦象解读内容（使用 Markdown，必须包含以下三个章节，每章节用 ## 标题标注，共约400-500字）'}"
 }
 
 【卦象解读必须严格包含以下三个章节，缺一不可】
@@ -347,7 +351,7 @@ ${sectionHeadings}
 ${english ? 'Explain the source meaning, apply it to the question in modern language, and finish with a vivid story or metaphor.' : '引用卦辞、象曰原文（仅限【经文原文】区块中的原句），解释其含义；再结合具体问题作现代解读，并用故事或比喻使卦理直观易懂。'}
 
 【综合解读要求】
-使用 Markdown 格式，用 ## 标题分节（如：## 卦象总论、## 动爻分析、## 综合建议），关键词或核心建议用 **加粗** 标注。
+${input.locale === 'zh-TW' ? '使用 Markdown 格式，以 ## 標題分節（如：## 卦象總論、## 動爻分析、## 綜合建議），關鍵詞或核心建議以 **粗體** 標示。' : '使用 Markdown 格式，用 ## 标题分节（如：## 卦象总论、## 动爻分析、## 综合建议），关键词或核心建议用 **加粗** 标注。'}
 
 【问题相关性要求】
 ${relevanceRules}
@@ -365,9 +369,9 @@ ${relevanceRules}
 function getDeepSeekError(error: unknown, locale: GenerateInput['locale'] = 'zh-CN'): TRPCError {
   if (error instanceof TRPCError) return error;
   if ((error instanceof DeepSeekRequestError || error instanceof DeepSeekStreamError) && error.kind === 'timeout') {
-    return new TRPCError({ code: 'TIMEOUT', message: localized(locale, '解读生成超时，请稍后重试。', 'The reading timed out. Please try again later.') });
+    return new TRPCError({ code: 'TIMEOUT', message: localized(locale, '解读生成超时，请稍后重试。', 'The reading timed out. Please try again later.', '解讀生成逾時，請稍後重試。') });
   }
-  return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: localized(locale, '解读生成失败，请稍后重试。', 'The reading could not be generated. Please try again later.') });
+  return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: localized(locale, '解读生成失败，请稍后重试。', 'The reading could not be generated. Please try again later.', '解讀生成失敗，請稍後重試。') });
 }
 
 async function saveAuthenticatedReading(
@@ -431,6 +435,9 @@ async function writeDevelopmentMockStream(res: Response, locale: GenerateInput['
   const mock: StreamedReading = locale === 'en-US' ? {
     integrated_reading: '## Overview\n\nThis local preview confirms that the reading streams progressively and exports correctly.\n\n## Guidance\n\nStay composed and proceed one step at a time.',
     hexagram_reading: '## 1. Classical meaning and interpretation\n\nA local preview interpretation.\n\n## 2. Modern interpretation\n\nObserve first, then act.\n\n## 3. Story and metaphor\n\nLike a boat on water, adjust the sail as conditions change.',
+  } : locale === 'zh-TW' ? {
+    integrated_reading: '## 卦象總論\n\n此為本機介面驗收內容，用於確認解讀會逐步出現，並驗證長圖儲存。\n\n## 綜合建議\n\n保持從容，循序推進。',
+    hexagram_reading: '## 一、經文原文與釋義\n\n本機測試釋義。\n\n## 二、現代解讀\n\n先觀察，再行動。\n\n## 三、故事化解讀\n\n如舟行水上，順勢調帆。',
   } : {
     integrated_reading: '## 卦象总论\n\n此为本地界面验收内容，用于确认解读会逐步出现，并验证电脑端长图保存。\n\n## 综合建议\n\n保持从容，循序推进。',
     hexagram_reading: '## 一、经文原文与释义\n\n本地测试释义。\n\n## 二、现代解读\n\n先观察，再行动。\n\n## 三、故事化解读\n\n如舟行水上，顺势调帆。',
@@ -467,12 +474,12 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
     });
   });
 
-  const requestedLocale: GenerateInput['locale'] = req.body?.locale === 'en-US' ? 'en-US' : 'zh-CN';
+  const requestedLocale: GenerateInput['locale'] = req.body?.locale === 'en-US' ? 'en-US' : req.body?.locale === 'zh-TW' ? 'zh-TW' : 'zh-CN';
   const parsedInput = ReadingStreamInputSchema.safeParse(req.body);
   if (!parsedInput.success) {
     logReadingEvent('error', 'invalid_input', { requestId });
     await updateAiRequestLog(requestId, { status: 'rejected', httpStatus: 400, failureKind: 'invalid_input' });
-    return res.status(400).json({ error: localized(requestedLocale, '占卜参数格式无效，请重新起卦。', 'The casting data is invalid. Please cast again.'), requestId });
+    return res.status(400).json({ error: localized(requestedLocale, '占卜参数格式无效，请重新起卦。', 'The casting data is invalid. Please cast again.', '占卜參數格式無效，請重新起卦。'), requestId });
   }
   const { turnstileToken, ...readingInput } = parsedInput.data;
   const locale = readingInput.locale;
@@ -485,7 +492,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       failureKind: 'invalid_casting',
     });
     return res.status(400).json({
-      error: localized(locale, '排盘校验失败，请刷新页面后重新起卦。', 'Casting validation failed. Refresh and cast again.'),
+      error: localized(locale, '排盘校验失败，请刷新页面后重新起卦。', 'Casting validation failed. Refresh and cast again.', '排盤校驗失敗，請重新整理頁面後重新起卦。'),
       requestId,
     });
   }
@@ -496,7 +503,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
   if (!ENV.deepseekApiKey) {
     logReadingEvent('error', 'missing_api_key', { requestId });
     await updateAiRequestLog(requestId, { status: 'rejected', httpStatus: 412, failureKind: 'missing_api_key' });
-    return res.status(412).json({ error: localized(locale, '解读服务尚未配置，请稍后再试。', 'The reading service is not configured. Please try again later.'), requestId });
+    return res.status(412).json({ error: localized(locale, '解读服务尚未配置，请稍后再试。', 'The reading service is not configured. Please try again later.', '解讀服務尚未設定，請稍後再試。'), requestId });
   }
 
   let rateLimitConsumed = false;
@@ -515,7 +522,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
           failureKind: 'turnstile_required',
         });
         return res.status(403).json({
-          error: localized(locale, '今日已完成 5 次解读，请先完成人机验证后继续。', 'You have completed five readings today. Please verify that you are human to continue.'),
+          error: localized(locale, '今日已完成 5 次解读，请先完成人机验证后继续。', 'You have completed five readings today. Please verify that you are human to continue.', '今日已完成 5 次解讀，請先完成人機驗證後繼續。'),
           code: 'TURNSTILE_REQUIRED',
           siteKey: ENV.turnstileSiteKey,
           requestId,
@@ -536,7 +543,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
           failureKind: 'turnstile_failed',
         });
         return res.status(403).json({
-          error: localized(locale, '人机验证未通过或已过期，请重新验证。', 'Verification failed or expired. Please try again.'),
+          error: localized(locale, '人机验证未通过或已过期，请重新验证。', 'Verification failed or expired. Please try again.', '人機驗證未通過或已過期，請重新驗證。'),
           code: 'TURNSTILE_FAILED',
           siteKey: ENV.turnstileSiteKey,
           requestId,
@@ -547,7 +554,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
       if (!rateCheck.allowed) {
         throw new TRPCError({
           code: 'TOO_MANY_REQUESTS',
-          message: localized(locale, `今日解读次数已达上限（每天最多 ${DAILY_LIMIT} 次），请明天再来使用吧～`, `Today's reading limit (${DAILY_LIMIT}) has been reached. Please return tomorrow.`),
+          message: localized(locale, `今日解读次数已达上限（每天最多 ${DAILY_LIMIT} 次），请明天再来使用吧～`, `Today's reading limit (${DAILY_LIMIT}) has been reached. Please return tomorrow.`, `今日解讀次數已達上限（每天最多 ${DAILY_LIMIT} 次），請明天再來使用吧～`),
         });
       }
     }
@@ -598,7 +605,7 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
         await notifyBudgetLimitOnce(rateLimitDate);
         throw new TRPCError({
           code: 'TOO_MANY_REQUESTS',
-          message: localized(locale, '今日网站整体 AI 使用额度已达上限，请明天再来使用吧～', "Today's shared AI allowance has been reached. Please return tomorrow."),
+          message: localized(locale, '今日网站整体 AI 使用额度已达上限，请明天再来使用吧～', "Today's shared AI allowance has been reached. Please return tomorrow.", '今日網站整體 AI 使用額度已達上限，請明天再來使用吧～'),
         });
       }
       attemptCount = attempt;
@@ -618,6 +625,8 @@ export async function handleReadingStream(req: Request, res: Response, ctx: Trpc
               role: 'system',
               content: locale === 'en-US'
                 ? 'You are a rigorous I Ching cultural interpreter. First understand and directly answer the user\'s exact question, then explain the answer from the supplied hexagram and source text. Never change the subject of the question or invent a person, relationship, motive, event, or certainty. Do not map ancient characters or situations literally onto an unrelated modern question. Use only the supplied source material. Return every user-visible word in natural English and never output Chinese characters.'
+                : locale === 'zh-TW'
+                  ? '你是嚴謹的《周易》文化解讀者。先準確理解並直接回應使用者原問題，再以提供的卦象與經文說明理由。不得擅自改變問題對象，不得猜測未說明的人物、關係、動機或事件；古代經文情境不得生搬硬套。只能引用提供的經文原文，不得杜撰。全部輸出必須使用繁體中文，包含標題與引文，不得混入簡體字。'
                 : '你是严谨的《周易》文化解读者。首要任务是准确理解并直接回应用户原问题，再以已提供的卦象和经文说明理由。不得擅自改变问题对象，不得猜测未说明的人物身份、关系、动机或事件；古代经文情境不得生搬硬套到现代问题。解读时只能引用用户提供的经文原文，不得自行补充或杜撰经文。全部输出使用简体中文。',
             },
             { role: 'user', content: buildPrompt(readingInput) },

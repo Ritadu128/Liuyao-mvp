@@ -186,9 +186,9 @@ export default function ResultPage() {
       {/* 背景大字 */}
       <div className="fixed inset-0 pointer-events-none select-none overflow-hidden">
         <span className="absolute top-4 left-4 text-[8rem] leading-none text-amber-900/[0.04]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '卦' : 'I'}</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'en-US' ? 'I' : '卦'}</span>
         <span className="absolute bottom-4 right-4 text-[6rem] leading-none text-amber-900/[0.03]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '象' : 'Ching'}</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'en-US' ? 'Ching' : '象'}</span>
       </div>
 
       {/* 主内容 */}
@@ -478,7 +478,7 @@ function HexagramTab({ reading, originalText, changedText, movingLines, isLoadin
   isLoading: boolean;
   error?: string;
   exportTargetRef: RefObject<HTMLDivElement | null>;
-  locale: 'zh-CN' | 'en-US';
+  locale: 'zh-CN' | 'zh-TW' | 'en-US';
 }) {
   const { t } = useI18n();
   return (

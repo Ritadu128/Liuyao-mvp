@@ -8,6 +8,7 @@ import {
 } from '@/components/ScrollUI';
 import { trackEvent } from '@/lib/analytics';
 import { useI18n } from '@/i18n/I18nContext';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -56,22 +57,23 @@ export default function QuestionPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 relative overflow-hidden">
+      <LanguageSwitcher />
 
       {/* 大字背景装饰 */}
       <div className="absolute inset-0 pointer-events-none select-none">
         <span className="absolute top-4 left-4 text-[9rem] leading-none text-amber-900/[0.05]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '易' : 'I'}</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'en-US' ? 'I' : '易'}</span>
         <span className="absolute bottom-4 right-4 text-[7rem] leading-none text-amber-900/[0.035]"
-          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'zh-CN' ? '卦' : 'Ching'}</span>
+          style={{ fontFamily: SONG, fontWeight: 700 }}>{locale === 'en-US' ? 'Ching' : '卦'}</span>
         {/* 左侧竖排文字 */}
         <div className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-800/[0.06] text-[0.78rem]"
           style={{ writingMode: 'vertical-rl', fontFamily: FANG_SONG, letterSpacing: '0.6em', lineHeight: 1 }}>
-          {locale === 'zh-CN' ? '天地玄黄宇宙洪荒' : 'HEAVEN EARTH CHANGE'}
+          {locale === 'en-US' ? 'HEAVEN EARTH CHANGE' : locale === 'zh-TW' ? '天地玄黃宇宙洪荒' : '天地玄黄宇宙洪荒'}
         </div>
         {/* 右侧竖排文字 */}
         <div className="absolute right-5 top-1/2 -translate-y-1/2 text-amber-800/[0.06] text-[0.78rem]"
           style={{ writingMode: 'vertical-rl', fontFamily: FANG_SONG, letterSpacing: '0.6em', lineHeight: 1 }}>
-          {locale === 'zh-CN' ? '日月盈昃辰宿列张' : 'SUN MOON BALANCE'}
+          {locale === 'en-US' ? 'SUN MOON BALANCE' : locale === 'zh-TW' ? '日月盈昃辰宿列張' : '日月盈昃辰宿列张'}
         </div>
       </div>
 

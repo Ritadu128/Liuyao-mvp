@@ -552,7 +552,7 @@ export default function ThrowPage() {
             display: 'flex',
             flexDirection: 'column-reverse',
             gap: '5px',
-            width: '22px',
+            width: '64px',
             justifySelf: 'end',
             alignItems: 'center',
           }}
@@ -565,6 +565,7 @@ export default function ThrowPage() {
                 fontSize: '9px',
                 fontFamily: '"Noto Serif SC", serif',
                 lineHeight: '9px',
+                whiteSpace: 'nowrap',
                 color: i < state.throws.length
                   ? 'rgba(140,100,30,0.80)'
                   : i === state.throws.length

@@ -5,12 +5,9 @@ export type Locale = keyof typeof messages;
 const STORAGE_KEY = 'liuyao_locale';
 
 function resolveInitialLocale(): Locale {
-  const requested = new URLSearchParams(window.location.search).get('lang');
-  if (requested === 'en' || requested === 'en-US') return 'en-US';
-  if (requested === 'zh' || requested === 'zh-CN') return 'zh-CN';
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'zh-CN' || saved === 'en-US') return saved;
+    if (saved === 'zh-CN' || saved === 'zh-TW' || saved === 'en-US') return saved;
   } catch {
     // Storage can be unavailable in strict privacy modes; browser language is a safe fallback.
   }

@@ -50,6 +50,15 @@ export function PrivacyPage() {
       { title: 'Security and updates', paragraphs: ['API keys and database credentials are stored only as server-side deployment secrets. Input validation, rate limits, request identifiers, and controlled error handling reduce risk, but no internet or third-party service is completely risk-free.', 'Material policy changes will be reflected in the last-updated date on this page.'] },
     ]} />
   );
+  if (locale === 'zh-TW') return (
+    <LegalPage title={t('privacyPolicy')} subtitle={t('privacySubtitle')} sections={[
+      { title: '適用範圍', paragraphs: ['本政策適用於「眾見六爻」目前的匿名版本，說明提問、解讀、本機歷史、手勢投擲與隨喜支持功能如何處理資料。若日後新增登入、分析、付款或其他服務，將於上線前更新本政策。'] },
+      { title: '我們處理的資料', paragraphs: ['請求 AI 解讀時，您的問題與本次排盤所需資料會傳送至本專案伺服器，再傳送至 DeepSeek API。請勿輸入密碼、身分證號、金融卡資料、精確地址或其他不必要的敏感資訊。', '為防止濫用，伺服器會處理請求來源 IP 的受保護表示、日期、請求診斷資訊、Token 用量與費用估計。本機卦錄儲存在此瀏覽器的 liuyao_local_history 中。'] },
+      { title: '攝影機與手勢辨識', paragraphs: ['只有在您主動選擇手勢投擲並授權後，攝影機才會啟動。MediaPipe 會在瀏覽器本機辨識握拳與張掌；目前不會將攝影機畫面上傳至本專案伺服器或 DeepSeek。', '關閉手勢辨識或離開投擲頁面時，程式會停止攝影機影像軌道。'] },
+      { title: '本機儲存與第三方服務', paragraphs: ['匿名版本使用 localStorage 儲存卦錄與語言偏好。第三方服務包括 DeepSeek（文字生成）、Cloudflare Turnstile（防止濫用）以及 Google Fonts（字體載入）。', '清除網站資料、使用私密瀏覽模式、更換瀏覽器或裝置後，本機卦錄可能無法復原。'] },
+      { title: '安全與政策更新', paragraphs: ['API 金鑰與資料庫憑證僅儲存於伺服器端部署機密。輸入驗證、請求限制、請求編號及受控錯誤處理有助於降低風險，但任何網路或第三方服務都無法保證絕對安全。', '政策若有重大變更，將更新本頁所示日期。'] },
+    ]} />
+  );
   return (
     <LegalPage
       title="隐私政策"
@@ -111,6 +120,14 @@ export function DisclaimerPage() {
       { title: 'Not professional advice', paragraphs: ['This product does not provide medical, investment, legal, tax, or other professional advice and should not be the sole basis for a high-risk or important decision.', 'For medical, legal, financial, safety, or mental-health matters, consult a qualified professional and contact local emergency services when immediate help is needed.'] },
       { title: 'AI and third-party services', paragraphs: ['Interpretations are generated through the DeepSeek API from the question and supplied source material. Model output may be incomplete or wrong and does not represent the position of the creator, service providers, or classical texts.'] },
       { title: 'Availability and responsibility', paragraphs: ['We work to keep the service available and secure but cannot guarantee uninterrupted, error-free operation. Browser, camera, network, third-party API, and device compatibility may affect features.'] },
+    ]} />
+  );
+  if (locale === 'zh-TW') return (
+    <LegalPage title={t('disclaimer')} subtitle={t('disclaimerSubtitle')} sections={[
+      { title: '文化研究與娛樂用途', paragraphs: ['本產品及 AI 生成內容僅供《周易》文化研究、一般資訊與娛樂參考。占卜或解讀並非對事實、結果或未來事件的保證、承諾或預測。'] },
+      { title: '不構成專業意見', paragraphs: ['本產品不提供醫療、投資、法律、稅務或其他專業建議，也不應作為高風險或重大決策的唯一依據。', '涉及醫療、法律、財務、安全或心理健康問題時，請諮詢合格專業人士；如需立即協助，請聯絡當地緊急服務。'] },
+      { title: 'AI 與第三方服務', paragraphs: ['解讀由 DeepSeek API 根據您的問題與提供的經文資料生成。模型輸出可能不完整或有誤，並不代表作者、服務商或經文原典的立場。'] },
+      { title: '服務可用性與責任', paragraphs: ['我們盡力維持服務安全且可用，但無法保證服務不中斷或完全沒有錯誤。瀏覽器、攝影機、網路、第三方 API 與裝置相容性都可能影響功能。'] },
     ]} />
   );
   return (

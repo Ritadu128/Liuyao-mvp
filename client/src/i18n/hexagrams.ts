@@ -24,8 +24,25 @@ const ENGLISH_TRIGRAMS: Record<string, string> = {
   乾: 'Heaven', 兑: 'Lake', 离: 'Fire', 震: 'Thunder', 巽: 'Wind', 坎: 'Water', 艮: 'Mountain', 坤: 'Earth',
 };
 
+const TRADITIONAL_CHARACTERS: Record<string, string> = {
+  众: '眾', 见: '見', 为: '為', 风: '風', 泽: '澤', 讼: '訟', 师: '師', 谦: '謙', 随: '隨', 蛊: '蠱',
+  临: '臨', 观: '觀', 贲: '賁', 剥: '剝', 复: '復', 无: '無', 颐: '頤', 过: '過',
+  离: '離', 壮: '壯', 晋: '晉', 损: '損', 渐: '漸', 归: '歸', 丰: '豐', 兑: '兌',
+  涣: '渙', 节: '節', 济: '濟', 既: '既', 妹: '妹', 震: '震', 巽: '巽',
+};
+
+function traditionalName(value: string) {
+  return Array.from(value, character => TRADITIONAL_CHARACTERS[character] ?? character).join('');
+}
+
 export function localizeHexagram(info: HexagramInfo | null, locale: Locale): HexagramInfo | null {
   if (!info || locale === 'zh-CN') return info;
+  if (locale === 'zh-TW') return {
+    ...info,
+    name: traditionalName(info.name),
+    upper: traditionalName(info.upper),
+    lower: traditionalName(info.lower),
+  };
   return {
     ...info,
     name: ENGLISH_NAMES[info.key] ?? `Hexagram ${Number(info.key)}`,
@@ -35,5 +52,6 @@ export function localizeHexagram(info: HexagramInfo | null, locale: Locale): Hex
 }
 
 export function localizedHexagramName(key: string, chineseName: string, locale: Locale) {
-  return locale === 'en-US' ? (ENGLISH_NAMES[key] ?? `Hexagram ${Number(key)}`) : chineseName;
+  if (locale === 'en-US') return ENGLISH_NAMES[key] ?? `Hexagram ${Number(key)}`;
+  return locale === 'zh-TW' ? traditionalName(chineseName) : chineseName;
 }

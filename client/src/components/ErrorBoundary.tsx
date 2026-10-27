@@ -23,8 +23,8 @@ class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      const english = (() => {
-        try { return localStorage.getItem('liuyao_locale') === 'en-US'; } catch { return false; }
+      const locale = (() => {
+        try { return localStorage.getItem('liuyao_locale'); } catch { return null; }
       })();
       return (
         <div className="flex items-center justify-center min-h-screen p-8 bg-background">
@@ -34,7 +34,7 @@ class ErrorBoundary extends Component<Props, State> {
               className="text-destructive mb-6 flex-shrink-0"
             />
 
-            <h2 className="text-xl mb-4">{english ? 'An unexpected error occurred.' : '页面发生了意外错误。'}</h2>
+            <h2 className="text-xl mb-4">{locale === 'en-US' ? 'An unexpected error occurred.' : locale === 'zh-TW' ? '頁面發生了意外錯誤。' : '页面发生了意外错误。'}</h2>
 
             <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
               <pre className="text-sm text-muted-foreground whitespace-break-spaces">
@@ -51,7 +51,7 @@ class ErrorBoundary extends Component<Props, State> {
               )}
             >
               <RotateCcw size={16} />
-              {english ? 'Reload page' : '重新加载页面'}
+              {locale === 'en-US' ? 'Reload page' : locale === 'zh-TW' ? '重新載入頁面' : '重新加载页面'}
             </button>
           </div>
         </div>
