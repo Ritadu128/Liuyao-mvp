@@ -12,6 +12,7 @@ export function LanguageSwitcher() {
   const { locale, setLocale } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const languageLabel = locale === 'en-US' ? 'Language' : locale === 'zh-TW' ? '語言' : '语言';
 
   useEffect(() => {
     if (!open) return;
@@ -33,19 +34,19 @@ export function LanguageSwitcher() {
     <div ref={rootRef} className="absolute right-4 top-4 z-30 sm:right-6 sm:top-6" style={{ fontFamily: FANG_SONG }}>
       <button
         type="button"
-        aria-label="选择语言 / Select language"
+        aria-label={languageLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen(value => !value)}
         className="flex h-10 min-w-20 items-center justify-center border px-3 text-xs text-[#7c5a2a] transition-colors hover:bg-[#fff8e6]"
         style={{ background: 'rgba(255,252,242,0.7)', borderColor: 'rgba(175,120,35,0.28)', borderRadius: '3px' }}
       >
-        Language
+        {languageLabel}
       </button>
       {open && (
         <div
           role="listbox"
-          aria-label="语言 / Language"
+          aria-label={languageLabel}
           className="absolute right-0 top-11 min-w-32 border p-1 shadow-md"
           style={{ background: '#fffcf2', borderColor: 'rgba(175,120,35,0.28)', borderRadius: '3px' }}
         >
